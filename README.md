@@ -14,6 +14,11 @@ Files are grouped into a collapsible directory tree and tagged with their status
 - `both` — files with both staged and unstaged changes
 - `committed` — files changed by the commit under review
 
+## AI Slop ahead
+
+Fair warning, this code was generated using LLMs. The plugin works and serves my needs but apart
+from carefully revieweing the UI, I haven't deeply reviewed the code.
+
 ## Screenshots
 
 ![Treemacs Magit diff view](list1.png)
