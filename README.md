@@ -14,6 +14,12 @@ Files are grouped into a collapsible directory tree and tagged with their status
 - `both` — files with both staged and unstaged changes
 - `committed` — files changed by the commit under review
 
+## Screenshots
+
+![Treemacs Magit diff view](list1.png)
+
+![Treemacs Magit status view](list2.png)
+
 ## Dependencies
 
 - Emacs
