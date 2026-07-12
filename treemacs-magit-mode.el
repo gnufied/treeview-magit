@@ -1,5 +1,10 @@
 ;;; treemacs-magit-mode.el --- Changed files as a Treemacs tree -*- lexical-binding: t -*-
 
+;; Author: Hemant Kumar
+;; Version: 0.1.0
+;; Package-Requires: ((emacs "27.1") (magit "3.0.0") (treemacs "3.0"))
+;; URL: https://github.com/gnufied/treeview-magit
+
 ;;; Commentary:
 ;;
 ;; Display the files changed in the current repository, or the files changed
