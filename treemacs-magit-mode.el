@@ -22,6 +22,43 @@
   name key path children status root revision repository)
 
 (defconst treemacs-magit--buffer-name "*Treemacs Magit*")
+
+(defcustom treemacs-magit-fold-min-depth 3
+  "Rendered tree depth beyond which directory chains are folded.
+
+When files sit deeper than this many levels below the repository root,
+directory nodes with a single directory child are merged with it and
+rendered as one \"parent/child\" node, repeatedly, until the subtree
+either fans out or fits within the limit.  Set to 0 to always fold, or
+nil to disable folding."
+  :type '(choice (const :tag "Disabled" nil) integer)
+  :group 'treemacs)
+
+(defcustom treemacs-magit-status-icons
+  '((unstaged . "󰏫")
+    (staged . "󰄬")
+    (both . "󰏫󰄬")
+    (untracked . "󰈔"))
+  "Nerd Font icons shown for changed files in a Magit status tree.
+
+Each entry maps a status symbol to its indicator.  Remove an entry or
+use an empty string to hide its indicator.  Commit and log views do not
+display status icons."
+  :type '(alist :key-type symbol :value-type string)
+  :group 'treemacs)
+
+(defcustom treemacs-magit-status-icon-position 'prefix
+  "Where to display file status icons in a Magit status tree."
+  :type '(choice (const :tag "Before file name" prefix)
+                 (const :tag "After file name" suffix)
+                 (const :tag "Hide icons" none))
+  :group 'treemacs)
+
+(defcustom treemacs-magit-status-icon-separator " "
+  "Text between a file status icon and its name."
+  :type 'string
+  :group 'treemacs)
+
 (defvar treemacs-magit--contexts nil)
 (defvar-local treemacs-magit--repository nil)
 (defvar-local treemacs-magit--revision nil)
@@ -170,6 +207,40 @@ before running FUNCTION."
         (setf parent node)))
     (setf (treemacs-magit-node-status parent) status)))
 
+(defun treemacs-magit--node-height (node)
+  "Return the number of levels below NODE."
+  (let ((children (treemacs-magit-node-children node)))
+    (if children
+        (1+ (apply #'max (mapcar #'treemacs-magit--node-height children)))
+      0)))
+
+(defun treemacs-magit--fold-node (node depth)
+  "Fold single-child directory chains into NODE, rendered at DEPTH.
+
+While the deepest leaf under NODE would render beyond
+`treemacs-magit-fold-min-depth' and NODE's only child is another
+directory, NODE absorbs that child and displays both names as
+\"parent/child\".  Children are folded recursively at their rendered
+depth, so each fold makes room for the levels below it."
+  (when (treemacs-magit-node-children node)
+    (when (and treemacs-magit-fold-min-depth
+               (not (treemacs-magit-node-root node)))
+      (let (child)
+        (while (and (> (+ depth (treemacs-magit--node-height node))
+                       treemacs-magit-fold-min-depth)
+                    (null (cdr (treemacs-magit-node-children node)))
+                    (setq child (car (treemacs-magit-node-children node)))
+                    (treemacs-magit-node-children child))
+          (setf (treemacs-magit-node-name node)
+                (concat (treemacs-magit-node-name node) "/"
+                        (treemacs-magit-node-name child))
+                (treemacs-magit-node-key node) (treemacs-magit-node-key child)
+                (treemacs-magit-node-path node) (treemacs-magit-node-path child)
+                (treemacs-magit-node-children node)
+                (treemacs-magit-node-children child)))))
+    (dolist (child (treemacs-magit-node-children node))
+      (treemacs-magit--fold-node child (1+ depth)))))
+
 (defun treemacs-magit--dirty-root (repository)
   "Build a tree of all dirty files in REPOSITORY."
   (let ((root (treemacs-magit-node-create
@@ -193,6 +264,7 @@ before running FUNCTION."
                        root untracked-file 'untracked))
                   (treemacs-magit--insert-file root file kind)))
             (treemacs-magit--insert-file root file kind)))))
+    (treemacs-magit--fold-node root 0)
     root))
 
 (defun treemacs-magit--commit-files (revision)
@@ -214,6 +286,7 @@ before running FUNCTION."
     (let ((default-directory repository))
       (dolist (file (treemacs-magit--commit-files revision))
         (treemacs-magit--insert-file root file 'committed)))
+    (treemacs-magit--fold-node root 0)
     root))
 
 (defun treemacs-magit--roots ()
@@ -246,13 +319,21 @@ before running FUNCTION."
 
 (defun treemacs-magit--label (node)
   "Return the display label for NODE."
-  (let ((status (treemacs-magit-node-status node)))
+  (let* ((status (treemacs-magit-node-status node))
+        (name (treemacs-magit-node-name node))
+        (icon (and status
+                   (not (treemacs-magit-node-children node))
+                   (not (eq status 'committed))
+                   (alist-get status treemacs-magit-status-icons))))
     (propertize
-     (if (and status
-              (not (treemacs-magit-node-children node))
-              (not (eq status 'committed)))
-         (format "%s [%s]" (treemacs-magit-node-name node) status)
-       (treemacs-magit-node-name node))
+     (pcase treemacs-magit-status-icon-position
+       ('prefix (if (string-empty-p (or icon ""))
+                   name
+                 (concat icon treemacs-magit-status-icon-separator name)))
+       ('suffix (if (string-empty-p (or icon ""))
+                   name
+                 (concat name treemacs-magit-status-icon-separator icon)))
+       (_ name))
      'face (treemacs-magit--node-face node))))
 
 (defun treemacs-magit--visit-current (&optional view-file)
@@ -356,7 +437,13 @@ events when the terminal reports them to Emacs."
     (define-key map [mouse-1] #'treemacs-magit--mouse-diff)
     (define-key map [C-mouse-1] #'treemacs-magit--mouse-file)
     (define-key map [C-down-mouse-1] #'treemacs-magit--mouse-file)
-    (define-key map (kbd "s") #'treemacs-magit-stage-file-at-point)))
+    (define-key map (kbd "s") #'treemacs-magit-stage-file-at-point)
+    (define-key map (kbd "q") #'treemacs-magit-quit)))
+
+(defun treemacs-magit-quit ()
+  "Quit the Treemacs Magit view and kill its buffer."
+  (interactive)
+  (quit-window t))
 
 (defun treemacs-magit--leftmost-window ()
   "Return the leftmost non-minibuffer window."
@@ -409,7 +496,7 @@ events when the terminal reports them to Emacs."
   (treemacs-magit--mouse-action event t))
 
 (defun treemacs-magit-stage-file-at-point ()
-  "Stage the unstaged changes for the file node at point."
+  "Toggle staging for the file node at point."
   (interactive)
   (let* ((button (treemacs-current-button))
          (node (and button (treemacs-button-get button :node)))
@@ -421,13 +508,18 @@ events when the terminal reports them to Emacs."
     (when (or (treemacs-magit-node-revision root)
               (eq (treemacs-magit-node-status node) 'committed))
       (user-error "Cannot stage a file from a commit view"))
-    (when (eq (treemacs-magit-node-status node) 'staged)
-      (user-error "File is already staged"))
     (let ((default-directory (treemacs-magit-node-repository node))
           (file (file-relative-name
                  (treemacs-magit-node-path node)
-                 (treemacs-magit-node-repository node))))
-      (magit-stage-files (list file)))
+                 (treemacs-magit-node-repository node)))
+          (status (treemacs-magit-node-status node)))
+      (pcase status
+        ('staged
+         (magit-unstage-files (list file)))
+        ('untracked
+         (user-error "Cannot stage an untracked file"))
+        (_
+         (magit-stage-files (list file)))))
     (treemacs-initialize treemacs-magit-root
       :with-expand-depth t)))
 
