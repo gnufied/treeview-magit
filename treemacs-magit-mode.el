@@ -446,9 +446,14 @@ events when the terminal reports them to Emacs."
     (define-key map (kbd "q") #'treemacs-magit-quit)))
 
 (defun treemacs-magit-quit ()
-  "Quit the Treemacs Magit view and kill its buffer."
+  "Quit the Treemacs Magit view, delete its window, and kill its buffer."
   (interactive)
-  (quit-window t))
+  (let ((buffer (current-buffer))
+        (window (selected-window)))
+    (when (and (window-live-p window)
+               (not (one-window-p t (window-frame window))))
+      (delete-window window))
+    (kill-buffer buffer)))
 
 (defun treemacs-magit--leftmost-window ()
   "Return the leftmost non-minibuffer window."
