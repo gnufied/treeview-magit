@@ -505,23 +505,13 @@ events when the terminal reports them to Emacs."
   (interactive "e")
   (treemacs-magit--mouse-action event t))
 
-(defun treemacs-magit--goto-path (path)
-  "Move point to the visible tree node identified by PATH."
-  (let ((button (next-button (point-min)))
-        found)
-    (while (and button (not found))
-      (if (equal path (treemacs-button-get button :path))
-          (setq found button)
-        (setq button (next-button button))))
-    (when found
-      (goto-char found))))
-
 (defun treemacs-magit-stage-file-at-point ()
   "Toggle staging for the file node at point."
   (interactive)
   (let* ((button (treemacs-current-button))
          (node (and button (treemacs-button-get button :node)))
-         (root (and button (treemacs-magit--root-for-button button))))
+         (root (and button (treemacs-magit--root-for-button button)))
+         (path (and button (treemacs-button-get button :path))))
     (unless (and (treemacs-magit-node-p node)
                  (not (treemacs-magit-node-root node))
                  (not (treemacs-magit-node-children node)))
@@ -543,7 +533,7 @@ events when the terminal reports them to Emacs."
          (magit-stage-files (list file)))))
     (treemacs-initialize treemacs-magit-root
       :with-expand-depth t)
-    (treemacs-magit--goto-path (treemacs-magit-node-path node))))
+    (treemacs-goto-extension-node path)))
 
 (treemacs-define-expandable-node-type treemacs-magit-node
   :closed-icon (if (treemacs-magit-node-root item)
