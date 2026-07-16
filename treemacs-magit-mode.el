@@ -14,6 +14,7 @@
 
 (require 'cl-lib)
 (require 'magit)
+(require 'magit-commit)
 (require 'seq)
 (require 'subr-x)
 (require 'treemacs)
@@ -147,6 +148,18 @@ before running FUNCTION."
   "Run FUNCTION with ARGUMENTS in the file-content target window."
   (apply #'treemacs-magit--run-in-window
          (treemacs-magit--file-target-window) t function arguments))
+
+(defun treemacs-magit--display-commit-message (buffer)
+  "Display commit message BUFFER in the window beside the tree."
+  (if (treemacs-magit--tree-window)
+      (progn
+        (select-window (treemacs-magit--target-window))
+        (switch-to-buffer buffer))
+    (switch-to-buffer buffer)))
+
+(add-to-list 'with-editor-server-window-alist
+             (cons git-commit-filename-regexp
+                   #'treemacs-magit--display-commit-message))
 
 (defun treemacs-magit--has-separate-file-target-p ()
   "Return non-nil when file contents can use a window separate from diffs."
@@ -442,6 +455,7 @@ events when the terminal reports them to Emacs."
     (define-key map [mouse-1] #'treemacs-magit--mouse-diff)
     (define-key map [C-mouse-1] #'treemacs-magit--mouse-file)
     (define-key map [C-down-mouse-1] #'treemacs-magit--mouse-file)
+    (define-key map (kbd "c") #'treemacs-magit-commit)
     (define-key map (kbd "s") #'treemacs-magit-stage-file-at-point)
     (define-key map (kbd "q") #'treemacs-magit-quit)))
 
@@ -504,6 +518,19 @@ events when the terminal reports them to Emacs."
   "Visit the file represented by the modified click EVENT."
   (interactive "e")
   (treemacs-magit--mouse-action event t))
+
+(defun treemacs-magit-commit ()
+  "Commit the currently staged changes from the Treemacs Magit view."
+  (interactive)
+  (let* ((context (cdr (assq (current-buffer) treemacs-magit--contexts)))
+         (repository (or treemacs-magit--repository (car context)))
+         (revision (or treemacs-magit--revision (cdr context))))
+    (unless (and (stringp repository) (file-directory-p repository))
+      (user-error "The Treemacs Magit repository is no longer available"))
+    (when revision
+      (user-error "Cannot create a commit from a commit view"))
+    (let ((default-directory repository))
+      (magit-commit-create))))
 
 (defun treemacs-magit-stage-file-at-point ()
   "Toggle staging for the file node at point."

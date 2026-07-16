@@ -80,12 +80,13 @@ When point is on a commit in a `magit-revision-mode` or `magit-log-mode` buffer,
 | --- | --- |
 | `RET` | Open the diff for the file at point |
 | `S-RET` | Visit the file itself |
+| `c` | Commit the currently staged changes |
 | `s` | Toggle staging for the file at point (stages unstaged files, unstages staged files) |
 | `q` | Quit and kill the buffer |
 | `<mouse-1>` | Open the diff for the clicked file |
 | `C-<mouse-1>` | Visit the clicked file |
 
-The package tries to reuse the window immediately to the right of the tree for diffs. If a third vertical window is available, file contents are shown there; otherwise the diff window is reused.
+The package tries to reuse the window immediately to the right of the tree for diffs and commit messages. If a third vertical window is available, file contents are shown there; otherwise the diff window is reused.
 
 ## Configuration
 
