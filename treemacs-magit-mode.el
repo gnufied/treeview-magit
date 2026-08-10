@@ -8,11 +8,13 @@
 ;;; Commentary:
 ;;
 ;; Display the files changed in the current repository, or the files changed
-;; by the commit at point in a Magit history/revision buffer.
+;; by the commit at point in a Magit history/revision buffer.  Pull request
+;; changes can also be displayed after checking out the pull request with gh.
 
 ;;; Code:
 
 (require 'cl-lib)
+(require 'json)
 (require 'magit)
 (require 'magit-commit)
 (require 'seq)
@@ -25,7 +27,8 @@
 
 (cl-defstruct (treemacs-magit-node
                (:constructor treemacs-magit-node-create))
-  name key path children status root revision repository)
+  name key path children status root revision range pull-request repository
+  collapsed)
 
 (defconst treemacs-magit--buffer-name "*Treemacs Magit*")
 
@@ -65,9 +68,29 @@ display status icons."
   :type 'string
   :group 'treemacs)
 
+(defcustom treemacs-magit-pr-collapsed-directories '("vendor")
+  "Root-relative directories to collapse in pull request trees.
+
+Each matching directory is rendered as a single directory node.  Its changed
+files are not inserted into the tree, and expanding the node shows no children.
+Entries must be relative to the repository root."
+  :type '(repeat string)
+  :group 'treemacs)
+
+(defcustom treemacs-magit-pr-checkout-program
+  (or (executable-find "sake") "sake")
+  "Program providing the `prc' task used to check out pull requests.
+
+This is the executable behind the shell command `s prc'; `s' itself is a shell
+alias and therefore cannot be invoked directly by Emacs."
+  :type 'file
+  :group 'treemacs)
+
 (defvar treemacs-magit--contexts nil)
 (defvar-local treemacs-magit--repository nil)
 (defvar-local treemacs-magit--revision nil)
+(defvar-local treemacs-magit--range nil)
+(defvar-local treemacs-magit--pull-request nil)
 
 (defun treemacs-magit--tree-window ()
   "Return the window displaying the Treemacs Magit buffer."
@@ -199,8 +222,11 @@ before running FUNCTION."
   (magit-git-items "ls-files" "-z" "--others" "--exclude-standard"
                    "--" (file-name-as-directory directory)))
 
-(defun treemacs-magit--insert-file (root file status)
-  "Insert FILE with STATUS below ROOT, creating directory nodes as needed."
+(defun treemacs-magit--insert-file (root file status &optional collapsed)
+  "Insert FILE with STATUS below ROOT, creating directory nodes as needed.
+
+When COLLAPSED is non-nil, mark the final node as an intentionally empty
+directory node."
   (let ((parts (split-string file "/" t))
         (parent root)
         (relative ""))
@@ -223,7 +249,31 @@ before running FUNCTION."
           (setf (treemacs-magit-node-children parent)
                 (append (treemacs-magit-node-children parent) (list node))))
         (setf parent node)))
-    (setf (treemacs-magit-node-status parent) status)))
+    (setf (treemacs-magit-node-status parent) status
+          (treemacs-magit-node-collapsed parent) collapsed)))
+
+(defun treemacs-magit--normalized-collapsed-directories ()
+  "Return configured pull request collapsed directories in normalized form."
+  (delete-dups
+   (mapcar
+    (lambda (directory)
+      (let ((normalized
+             (string-remove-prefix "./" (directory-file-name directory))))
+        (when (or (string-empty-p normalized)
+                  (file-name-absolute-p normalized)
+                  (member ".." (split-string normalized "/" t)))
+          (user-error "Collapsed PR directory must be root-relative: %s"
+                      directory))
+        normalized))
+    treemacs-magit-pr-collapsed-directories)))
+
+(defun treemacs-magit--collapsed-directory-for-file (file)
+  "Return the configured collapsed directory containing FILE, if any."
+  (seq-find (lambda (directory)
+              (or (equal file directory)
+                  (string-prefix-p (file-name-as-directory directory) file)))
+            (sort (treemacs-magit--normalized-collapsed-directories)
+                  (lambda (left right) (< (length left) (length right))))))
 
 (defun treemacs-magit--node-height (node)
   "Return the number of levels below NODE."
@@ -307,17 +357,57 @@ depth, so each fold makes room for the levels below it."
     (treemacs-magit--fold-node root 0)
     root))
 
+(defun treemacs-magit--pr-files (range)
+  "Return files changed by pull request RANGE."
+  (magit-git-items "diff" "-z" "--name-only" range "--"))
+
+(defun treemacs-magit--pr-root (repository range revision pull-request)
+  "Build a pull request tree in REPOSITORY.
+
+RANGE is the pull request's three-dot revision range, REVISION is its head
+commit, and PULL-REQUEST is its number."
+  (let ((root (treemacs-magit-node-create
+               :name (format "%s (PR #%s)"
+                             (file-name-nondirectory
+                              (directory-file-name repository))
+                             pull-request)
+               :key repository
+               :path repository
+               :root t
+               :revision revision
+               :range range
+               :pull-request pull-request
+               :repository repository)))
+    (let ((default-directory repository))
+      (dolist (file (treemacs-magit--pr-files range))
+        (if-let* ((directory
+                   (treemacs-magit--collapsed-directory-for-file file)))
+            (treemacs-magit--insert-file root directory nil t)
+          (treemacs-magit--insert-file root file 'committed))))
+    (treemacs-magit--fold-node root 0)
+    root))
+
 (defun treemacs-magit--roots ()
   "Return the root node for the current Magit context."
   (let* ((context (cdr (assq (current-buffer) treemacs-magit--contexts)))
-         (repository (or (car context) treemacs-magit--repository
+         (repository (or (plist-get context :repository)
+                         treemacs-magit--repository
                          (magit-toplevel))))
     (unless repository
       (user-error "The current buffer is not in a Git repository"))
-    (let ((revision (or (cdr context) treemacs-magit--revision)))
-      (list (if revision
-                (treemacs-magit--commit-root repository revision)
-              (treemacs-magit--dirty-root repository))))))
+    (let ((revision (or (plist-get context :revision)
+                        treemacs-magit--revision))
+          (range (or (plist-get context :range) treemacs-magit--range))
+          (pull-request (or (plist-get context :pull-request)
+                            treemacs-magit--pull-request)))
+      (list (cond
+             (range
+              (treemacs-magit--pr-root
+               repository range revision pull-request))
+             (revision
+              (treemacs-magit--commit-root repository revision))
+             (t
+              (treemacs-magit--dirty-root repository)))))))
 
 (defun treemacs-magit--node-children (btn item)
   "Return children for ITEM, refreshing the dirty root when it is expanded."
@@ -328,7 +418,9 @@ depth, so each fold makes room for the levels below it."
   "Return the face for NODE."
   (cond
    ((treemacs-magit-node-root node) 'treemacs-root-face)
-   ((treemacs-magit-node-children node) 'treemacs-directory-face)
+   ((or (treemacs-magit-node-children node)
+        (treemacs-magit-node-collapsed node))
+    'treemacs-directory-face)
    ((eq (treemacs-magit-node-status node) 'untracked)
     'font-lock-warning-face)
    ((memq (treemacs-magit-node-status node) '(staged committed))
@@ -340,7 +432,8 @@ depth, so each fold makes room for the levels below it."
   (let* ((status (treemacs-magit-node-status node))
         (name (treemacs-magit-node-name node))
         (icon (and status
-                   (not (treemacs-magit-node-children node))
+                   (not (or (treemacs-magit-node-children node)
+                            (treemacs-magit-node-collapsed node)))
                    (not (eq status 'committed))
                    (alist-get status treemacs-magit-status-icons))))
     (propertize
@@ -365,13 +458,19 @@ With VIEW-FILE, visit the file contents instead of displaying its diff."
       (user-error "No Treemacs Magit node at point"))
     (let ((default-directory (treemacs-magit-node-repository data)))
       (if (treemacs-magit-node-root data)
-          (if (treemacs-magit-node-revision data)
-              (treemacs-magit--run-in-target
-               #'magit-show-commit (treemacs-magit-node-revision data))
+          (cond
+           ((treemacs-magit-node-range data)
+            (treemacs-magit--run-in-target
+             #'magit-diff-range (treemacs-magit-node-range data)))
+           ((treemacs-magit-node-revision data)
+            (treemacs-magit--run-in-target
+             #'magit-show-commit (treemacs-magit-node-revision data)))
+           (t
             (treemacs-magit--run-in-target
              #'magit-status-setup-buffer
-             (treemacs-magit-node-repository data)))
-        (if (treemacs-magit-node-children data)
+             (treemacs-magit-node-repository data))))
+        (if (or (treemacs-magit-node-children data)
+                (treemacs-magit-node-collapsed data))
             (treemacs-toggle-node)
           (let ((file (file-relative-name
                        (treemacs-magit-node-path data)
@@ -387,10 +486,13 @@ With VIEW-FILE, visit the file contents instead of displaying its diff."
   "Display the diff for DATA with ROOT, FILE, and STATUS."
   (pcase status
     ('committed
-     (treemacs-magit--run-in-target
-      #'magit-show-commit
-      (treemacs-magit-node-revision root)
-      nil (list file)))
+     (if (treemacs-magit-node-range root)
+         (treemacs-magit--run-in-target
+          #'magit-diff-range (treemacs-magit-node-range root) nil (list file))
+       (treemacs-magit--run-in-target
+        #'magit-show-commit
+        (treemacs-magit-node-revision root)
+        nil (list file))))
     ('staged
      (treemacs-magit--run-in-target
       #'magit-diff-staged nil nil (list file)))
@@ -523,12 +625,15 @@ events when the terminal reports them to Emacs."
   "Commit the currently staged changes from the Treemacs Magit view."
   (interactive)
   (let* ((context (cdr (assq (current-buffer) treemacs-magit--contexts)))
-         (repository (or treemacs-magit--repository (car context)))
-         (revision (or treemacs-magit--revision (cdr context))))
+         (repository (or treemacs-magit--repository
+                         (plist-get context :repository)))
+         (revision (or treemacs-magit--revision
+                       (plist-get context :revision)))
+         (range (or treemacs-magit--range (plist-get context :range))))
     (unless (and (stringp repository) (file-directory-p repository))
       (user-error "The Treemacs Magit repository is no longer available"))
-    (when revision
-      (user-error "Cannot create a commit from a commit view"))
+    (when (or revision range)
+      (user-error "Cannot create a commit from a commit or pull request view"))
     (let ((default-directory repository))
       (magit-commit-create))))
 
@@ -541,11 +646,13 @@ events when the terminal reports them to Emacs."
          (path (and button (treemacs-button-get button :path))))
     (unless (and (treemacs-magit-node-p node)
                  (not (treemacs-magit-node-root node))
-                 (not (treemacs-magit-node-children node)))
+                 (not (treemacs-magit-node-children node))
+                 (not (treemacs-magit-node-collapsed node)))
       (user-error "Point is not on a file node"))
     (when (or (treemacs-magit-node-revision root)
+              (treemacs-magit-node-range root)
               (eq (treemacs-magit-node-status node) 'committed))
-      (user-error "Cannot stage a file from a commit view"))
+      (user-error "Cannot stage a file from a commit or pull request view"))
     (let ((default-directory (treemacs-magit-node-repository node))
           (file (file-relative-name
                  (treemacs-magit-node-path node)
@@ -565,12 +672,14 @@ events when the terminal reports them to Emacs."
 (treemacs-define-expandable-node-type treemacs-magit-node
   :closed-icon (if (treemacs-magit-node-root item)
                    (treemacs-get-icon-value 'root-closed)
-                 (if (treemacs-magit-node-children item)
+                 (if (or (treemacs-magit-node-children item)
+                         (treemacs-magit-node-collapsed item))
                      (treemacs-get-icon-value 'dir-closed)
                    (treemacs-get-icon-value 'tag-leaf)))
   :open-icon (if (treemacs-magit-node-root item)
                  (treemacs-get-icon-value 'root-open)
-               (if (treemacs-magit-node-children item)
+               (if (or (treemacs-magit-node-children item)
+                       (treemacs-magit-node-collapsed item))
                    (treemacs-get-icon-value 'dir-open)
                  (treemacs-get-icon-value 'tag-leaf)))
   :label (treemacs-magit--label item)
@@ -599,19 +708,117 @@ events when the terminal reports them to Emacs."
     (let ((buffer (get-buffer-create treemacs-magit--buffer-name)))
       (treemacs-magit--display-buffer buffer)
       (setq-local treemacs-magit--repository repository
-                  treemacs-magit--revision revision)
+                  treemacs-magit--revision revision
+                  treemacs-magit--range nil
+                  treemacs-magit--pull-request nil)
       (setq treemacs-magit--contexts
-            (cons (cons buffer (cons repository revision))
+            (cons (cons buffer (list :repository repository
+                                     :revision revision))
                   (assq-delete-all buffer treemacs-magit--contexts)))
       (treemacs-initialize treemacs-magit-root
         :with-expand-depth t)
       (setq-local treemacs-magit--repository repository
-                  treemacs-magit--revision revision)
+                  treemacs-magit--revision revision
+                  treemacs-magit--range nil
+                  treemacs-magit--pull-request nil)
       (setq-local window-size-fixed nil)
       (set-window-parameter (selected-window) 'no-delete-other-windows nil)
       (treemacs-magit--bind-buffer-keys)
       (when (null (treemacs-magit--roots))
         (message "No changes found")))))
+
+(defun treemacs-magit--process-string (program &rest arguments)
+  "Run PROGRAM with ARGUMENTS and return its trimmed output.
+
+Signal a user error containing the process output when the command fails."
+  (with-temp-buffer
+    (let ((status
+           (condition-case error-data
+               (apply #'process-file program nil '(t t) nil arguments)
+             (file-missing
+              (user-error "Cannot run %s: %s"
+                          program (error-message-string error-data))))))
+      (unless (and (integerp status) (zerop status))
+        (user-error "%s failed: %s"
+                    program (string-trim (buffer-string))))
+      (string-trim (buffer-string)))))
+
+(defun treemacs-magit--pr-metadata (pull-request)
+  "Return GitHub metadata for PULL-REQUEST as an alist."
+  (json-parse-string
+   (treemacs-magit--process-string
+    "gh" "pr" "view" (number-to-string pull-request)
+    "--json" "number,baseRefOid,headRefName,headRefOid")
+   :object-type 'alist))
+
+(defun treemacs-magit--pr-already-checked-out-p (metadata)
+  "Return non-nil when METADATA describes the current checkout."
+  (equal (magit-rev-parse "HEAD") (alist-get 'headRefOid metadata)))
+
+(defun treemacs-magit--checkout-pr (pull-request metadata)
+  "Check out PULL-REQUEST using the configured sake task when needed.
+
+METADATA is used to avoid resetting a pull request that is already checked
+out."
+  (unless (treemacs-magit--pr-already-checked-out-p metadata)
+    (let* ((head-name (alist-get 'headRefName metadata))
+           (head (alist-get 'headRefOid metadata))
+           (local-head (magit-rev-verify (format "refs/heads/%s" head-name))))
+      (when (and local-head (not (equal local-head head)))
+        (user-error
+         "Local branch %s differs from PR #%s; refusing sake's forced reset"
+         head-name pull-request))
+      (when (magit-git-items "status" "--porcelain=v1" "-z")
+        (user-error "Refusing to check out PR #%s with a dirty worktree"
+                    pull-request))
+      (message "Checking out PR #%s with sake prc..." pull-request)
+      (treemacs-magit--process-string
+       treemacs-magit-pr-checkout-program
+       "prc" (number-to-string pull-request)))))
+
+;;;###autoload
+(defun treemacs-magit-pr (pull-request)
+  "Check out and display all files changed by GitHub PULL-REQUEST.
+
+If the pull request's exact head commit is already checked out, do not run the
+checkout helper again.  Otherwise use the `prc' task from
+`treemacs-magit-pr-checkout-program'."
+  (interactive (list (read-number "GitHub PR number: ")))
+  (unless (> pull-request 0)
+    (user-error "Pull request number must be positive"))
+  (let ((repository (magit-toplevel)))
+    (unless repository
+      (user-error "The current buffer is not in a Git repository"))
+    (let ((default-directory repository))
+      (let* ((metadata (treemacs-magit--pr-metadata pull-request))
+             (base (alist-get 'baseRefOid metadata))
+             (head (alist-get 'headRefOid metadata)))
+        (treemacs-magit--checkout-pr pull-request metadata)
+        (unless (and (magit-rev-verify base) (magit-rev-verify head))
+          (user-error "PR #%s base or head commit is unavailable locally"
+                      pull-request))
+        (let* ((range (format "%s...%s" base head))
+               (buffer (get-buffer-create treemacs-magit--buffer-name)))
+          (treemacs-magit--display-buffer buffer)
+          (setq-local treemacs-magit--repository repository
+                      treemacs-magit--revision head
+                      treemacs-magit--range range
+                      treemacs-magit--pull-request pull-request)
+          (setq treemacs-magit--contexts
+                (cons (cons buffer (list :repository repository
+                                         :revision head
+                                         :range range
+                                         :pull-request pull-request))
+                      (assq-delete-all buffer treemacs-magit--contexts)))
+          (treemacs-initialize treemacs-magit-root
+            :with-expand-depth t)
+          (setq-local treemacs-magit--repository repository
+                      treemacs-magit--revision head
+                      treemacs-magit--range range
+                      treemacs-magit--pull-request pull-request)
+          (setq-local window-size-fixed nil)
+          (set-window-parameter (selected-window) 'no-delete-other-windows nil)
+          (treemacs-magit--bind-buffer-keys))))))
 
 (provide 'treemacs-magit-mode)
 

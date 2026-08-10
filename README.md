@@ -4,7 +4,7 @@ An Emacs package that displays Git changes as a [Treemacs](https://github.com/Al
 
 ## What it does
 
-`treemacs-magit-mode` opens a Treemacs side buffer showing the files that have changed in the current Git repository. It can also show the files changed by a specific commit when invoked from a Magit revision or log buffer.
+`treemacs-magit-mode` opens a Treemacs side buffer showing the files that have changed in the current Git repository. It can also show the files changed by a specific commit when invoked from a Magit revision or log buffer, or all files changed by a GitHub pull request.
 
 Files are grouped into a collapsible directory tree. Changed files are annotated with Nerd Font status icons (configurable):
 
@@ -33,6 +33,7 @@ from carefully revieweing the UI, I haven't deeply reviewed the code.
 - [magit](https://github.com/magit/magit)
 - [treemacs](https://github.com/Alexander-Miller/treemacs)
 - `treemacs-treelib` (bundled with Treemacs)
+- [GitHub CLI](https://cli.github.com/) and the `sake prc` helper for pull request views
 
 ## Installation
 
@@ -48,7 +49,7 @@ With `use-package` and `straight.el`:
 ```elisp
 (use-package treemacs-magit-mode
   :straight (treemacs-magit-mode :type git :host github :repo "gnufied/treeview-magit")
-  :commands (treemacs-magit))
+  :commands (treemacs-magit treemacs-magit-pr))
 ```
 
 ### Manual
@@ -65,7 +66,7 @@ Clone this repository and add it to your `load-path`:
 ```elisp
 (use-package treemacs-magit-mode
   :load-path "/path/to/treeview-magit"
-  :commands (treemacs-magit))
+  :commands (treemacs-magit treemacs-magit-pr))
 ```
 
 ## Usage
@@ -73,6 +74,12 @@ Clone this repository and add it to your `load-path`:
 Run `M-x treemacs-magit` from a buffer inside a Git repository to open a Treemacs view of all changed files.
 
 When point is on a commit in a `magit-revision-mode` or `magit-log-mode` buffer, `M-x treemacs-magit` shows the files touched by that commit instead.
+
+Run `M-x treemacs-magit-pr` from a Git repository and enter a GitHub pull request number to check out the PR and show its complete base-to-head change tree. If its exact head commit is already checked out, the checkout is skipped. Otherwise the command runs `sake prc NUMBER` (the executable behind the shell alias `s prc`). The worktree must be clean before switching branches.
+
+The local `prc` helper passes `--force` to `gh pr checkout`. To prevent an unexpected reset, the command refuses checkout when a local branch with the PR head branch's name exists at a different commit; update or remove that branch explicitly before retrying.
+
+Pull request diffs use GitHub's base and head commit IDs with Git's three-dot range semantics. Selecting the root shows the complete PR diff; selecting a file shows only that file's PR diff.
 
 ### Default key bindings
 
@@ -89,6 +96,24 @@ When point is on a commit in a `magit-revision-mode` or `magit-log-mode` buffer,
 The package tries to reuse the window immediately to the right of the tree for diffs and commit messages. If a third vertical window is available, file contents are shown there; otherwise the diff window is reused.
 
 ## Configuration
+
+### Large pull request directories
+
+Pull request trees collapse changed files under configured root-relative directories. The default keeps `vendor` as one intentionally empty directory node, so its potentially large subtree is never built. This affects PR views only.
+
+```elisp
+;; Each entry is relative to the repository root.
+(setq treemacs-magit-pr-collapsed-directories '("vendor" "third_party/generated"))
+
+;; Build every changed path in the PR tree.
+(setq treemacs-magit-pr-collapsed-directories nil)
+```
+
+The checkout helper defaults to the `sake` executable found on `PATH`. If needed, set its absolute path:
+
+```elisp
+(setq treemacs-magit-pr-checkout-program "/home/hekumar/bin/sake")
+```
 
 ### Directory folding
 
