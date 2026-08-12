@@ -75,7 +75,9 @@ Run `M-x treemacs-magit` from a buffer inside a Git repository to open a Treemac
 
 When point is on a commit in a `magit-revision-mode` or `magit-log-mode` buffer, `M-x treemacs-magit` shows the files touched by that commit instead.
 
-Run `M-x treemacs-magit-pr` from a Git repository and enter a GitHub pull request number to check out the PR and show its complete base-to-head change tree. If its exact head commit is already checked out, the checkout is skipped. Otherwise the command runs `sake prc NUMBER` (the executable behind the shell alias `s prc`). The worktree must be clean before switching branches.
+Run `M-x treemacs-magit-pr` from a Git repository to show the pull request associated with the current branch. GitHub CLI resolves that association from the branch, so another locally stored PR number is unnecessary. If the exact PR head is already checked out, checkout is skipped.
+
+Use `C-u M-x treemacs-magit-pr` to enter a different pull request number. When switching is needed, the command runs `sake prc NUMBER` (the executable behind the shell alias `s prc`). The worktree must be clean before switching branches.
 
 The local `prc` helper passes `--force` to `gh pr checkout`. To prevent an unexpected reset, the command refuses checkout when a local branch with the PR head branch's name exists at a different commit; update or remove that branch explicitly before retrying.
 

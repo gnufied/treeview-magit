@@ -156,11 +156,13 @@ normal diff target window."
 
 When BURY-CURRENT is non-nil, bury the buffer currently displayed in WINDOW
 before running FUNCTION."
-  (with-selected-window window
-    (when bury-current
-      (bury-buffer (window-buffer window)))
-    (let ((display-buffer-overriding-action '(display-buffer-same-window)))
-      (apply function arguments))))
+  (let ((directory default-directory))
+    (with-selected-window window
+      (when bury-current
+        (bury-buffer (window-buffer window)))
+      (let ((default-directory directory)
+            (display-buffer-overriding-action '(display-buffer-same-window)))
+        (apply function arguments)))))
 
 (defun treemacs-magit--run-in-target (function &rest arguments)
   "Run FUNCTION with ARGUMENTS in the window beside the tree."
@@ -744,11 +746,16 @@ Signal a user error containing the process output when the command fails."
       (string-trim (buffer-string)))))
 
 (defun treemacs-magit--pr-metadata (pull-request)
-  "Return GitHub metadata for PULL-REQUEST as an alist."
+  "Return GitHub metadata for PULL-REQUEST as an alist.
+
+When PULL-REQUEST is nil, ask gh for the pull request associated with the
+current branch."
   (json-parse-string
-   (treemacs-magit--process-string
-    "gh" "pr" "view" (number-to-string pull-request)
-    "--json" "number,baseRefOid,headRefName,headRefOid")
+   (apply #'treemacs-magit--process-string
+          "gh" "pr" "view"
+          (append (and pull-request (list (number-to-string pull-request)))
+                  (list "--json"
+                        "number,baseRefOid,headRefName,headRefOid")))
    :object-type 'alist))
 
 (defun treemacs-magit--pr-already-checked-out-p (metadata)
@@ -777,22 +784,30 @@ out."
        "prc" (number-to-string pull-request)))))
 
 ;;;###autoload
-(defun treemacs-magit-pr (pull-request)
-  "Check out and display all files changed by GitHub PULL-REQUEST.
+(defun treemacs-magit-pr (&optional pull-request)
+  "Check out and display all files changed by a GitHub pull request.
 
-If the pull request's exact head commit is already checked out, do not run the
-checkout helper again.  Otherwise use the `prc' task from
+With no argument, use the pull request associated by GitHub with the current
+branch.  With a prefix argument, prompt for PULL-REQUEST.
+
+If the pull request's exact head commit is already checked out, do not run
+the checkout helper again.  Otherwise use the `prc' task from
 `treemacs-magit-pr-checkout-program'."
-  (interactive (list (read-number "GitHub PR number: ")))
-  (unless (> pull-request 0)
+  (interactive
+   (list (and current-prefix-arg
+              (read-number "GitHub PR number: "))))
+  (when (and pull-request (not (> pull-request 0)))
     (user-error "Pull request number must be positive"))
   (let ((repository (magit-toplevel)))
     (unless repository
       (user-error "The current buffer is not in a Git repository"))
     (let ((default-directory repository))
       (let* ((metadata (treemacs-magit--pr-metadata pull-request))
+             (pull-request (alist-get 'number metadata))
              (base (alist-get 'baseRefOid metadata))
              (head (alist-get 'headRefOid metadata)))
+        (unless (and (integerp pull-request) (> pull-request 0))
+          (user-error "gh did not return a pull request number"))
         (treemacs-magit--checkout-pr pull-request metadata)
         (unless (and (magit-rev-verify base) (magit-rev-verify head))
           (user-error "PR #%s base or head commit is unavailable locally"
