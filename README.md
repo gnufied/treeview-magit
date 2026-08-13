@@ -83,6 +83,11 @@ The local `prc` helper passes `--force` to `gh pr checkout`. To prevent an unexp
 
 Pull request diffs use GitHub's base and head commit IDs with Git's three-dot range semantics. Selecting the root shows the complete PR diff; selecting a file shows only that file's PR diff.
 
+Visiting a file from a pull request tree opens the checked-out worktree file,
+so the buffer remains writable and language tooling such as LSP can run
+normally. Deleted files, which have no worktree copy, fall back to a read-only
+Magit blob. Ordinary commit views continue to use read-only commit blobs.
+
 ### Default key bindings
 
 | Key | Action |

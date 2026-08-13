@@ -515,9 +515,13 @@ With VIEW-FILE, visit the file contents instead of displaying its diff."
 (defun treemacs-magit--visit-file-node (data root file status)
   "Visit the file for DATA with ROOT, FILE, and STATUS."
   (if (eq status 'committed)
-      (treemacs-magit--run-in-file-target
-       #'magit-find-file
-       (treemacs-magit-node-revision root) file)
+      (if (and (treemacs-magit-node-range root)
+               (file-exists-p (treemacs-magit-node-path data)))
+          (treemacs-magit--run-in-file-target
+           #'find-file (treemacs-magit-node-path data))
+        (treemacs-magit--run-in-file-target
+         #'magit-find-file
+         (treemacs-magit-node-revision root) file))
     (treemacs-magit--run-in-file-target
      #'find-file (treemacs-magit-node-path data))))
 
