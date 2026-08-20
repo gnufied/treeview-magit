@@ -606,7 +606,7 @@ events when the terminal reports them to Emacs."
                (buffer-live-p replaced-buffer)
                (not (eq replaced-buffer buffer)))
       (bury-buffer replaced-buffer))
-    (set-window-dedicated-p tree-window nil)
+    (set-window-dedicated-p tree-window t)
     (set-window-parameter tree-window 'no-delete-other-windows nil)
     (set-window-parameter tree-window 'window-side nil)
     (set-window-parameter tree-window 'window-slot nil)
@@ -772,20 +772,13 @@ current branch."
 METADATA is used to avoid resetting a pull request that is already checked
 out."
   (unless (treemacs-magit--pr-already-checked-out-p metadata)
-    (let* ((head-name (alist-get 'headRefName metadata))
-           (head (alist-get 'headRefOid metadata))
-           (local-head (magit-rev-verify (format "refs/heads/%s" head-name))))
-      (when (and local-head (not (equal local-head head)))
-        (user-error
-         "Local branch %s differs from PR #%s; refusing sake's forced reset"
-         head-name pull-request))
-      (when (magit-git-items "status" "--porcelain=v1" "-z")
-        (user-error "Refusing to check out PR #%s with a dirty worktree"
-                    pull-request))
-      (message "Checking out PR #%s with sake prc..." pull-request)
-      (treemacs-magit--process-string
-       treemacs-magit-pr-checkout-program
-       "prc" (number-to-string pull-request)))))
+    (when (magit-git-items "status" "--porcelain=v1" "-z")
+      (user-error "Refusing to check out PR #%s with a dirty worktree"
+                  pull-request))
+    (message "Checking out PR #%s with sake prc..." pull-request)
+    (treemacs-magit--process-string
+     treemacs-magit-pr-checkout-program
+     "prc" (number-to-string pull-request))))
 
 ;;;###autoload
 (defun treemacs-magit-pr (&optional pull-request)

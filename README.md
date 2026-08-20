@@ -100,7 +100,11 @@ Magit blob. Ordinary commit views continue to use read-only commit blobs.
 | `<mouse-1>` | Open the diff for the clicked file |
 | `C-<mouse-1>` | Visit the clicked file |
 
-The package tries to reuse the window immediately to the right of the tree for diffs and commit messages. If a third vertical window is available, file contents are shown there; otherwise the diff window is reused.
+The tree window is dedicated to the Treemacs Magit buffer, so commands that
+display another buffer use a different window instead of replacing the tree.
+The package tries to reuse the window immediately to the right of the tree for
+diffs and commit messages. If a third vertical window is available, file
+contents are shown there; otherwise the diff window is reused.
 
 ## Configuration
 
@@ -121,6 +125,11 @@ The checkout helper defaults to the `sake` executable found on `PATH`. If needed
 ```elisp
 (setq treemacs-magit-pr-checkout-program "/home/hekumar/bin/sake")
 ```
+
+When the PR head is not already checked out, `treemacs-magit-pr` refuses to
+continue if the worktree has uncommitted changes.  Otherwise it runs the
+helper, whose `gh pr checkout --force` command may reset an existing local
+branch with the same name to the PR head.
 
 ### Directory folding
 
