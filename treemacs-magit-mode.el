@@ -86,11 +86,21 @@ alias and therefore cannot be invoked directly by Emacs."
   :type 'file
   :group 'treemacs)
 
+(defcustom treemacs-magit-min-content-window-width 50
+  "Minimum width of each content pane in an automatic three-pane layout.
+
+The value is measured in character columns in both terminal and graphical
+Emacs.  A separate file pane is created only when the space to the right of
+the tree can be divided into two windows at least this wide."
+  :type 'integer
+  :group 'treemacs)
+
 (defvar treemacs-magit--contexts nil)
 (defvar-local treemacs-magit--repository nil)
 (defvar-local treemacs-magit--revision nil)
 (defvar-local treemacs-magit--range nil)
 (defvar-local treemacs-magit--pull-request nil)
+(defvar-local treemacs-magit--rendered-root nil)
 
 (defun treemacs-magit--tree-window ()
   "Return the window displaying the Treemacs Magit buffer."
@@ -190,6 +200,27 @@ before running FUNCTION."
   "Return non-nil when file contents can use a window separate from diffs."
   (not (eq (treemacs-magit--target-window)
            (treemacs-magit--file-target-window))))
+
+(defun treemacs-magit--resize-tree-window (tree-window)
+  "Shrink TREE-WINDOW to its preferred width when possible."
+  (when (window-combined-p tree-window t)
+    (let* ((frame-width
+            (window-total-width (frame-root-window (window-frame tree-window))))
+           (preferred-width (max window-min-width
+                                 (floor (* frame-width 0.2))))
+           (delta (- preferred-width (window-total-width tree-window))))
+      (when (< delta 0)
+        (let ((resizable (window-resizable tree-window delta t)))
+          (when (< resizable 0)
+            (window-resize tree-window resizable t)))))))
+
+(defun treemacs-magit--ensure-wide-layout (tree-window)
+  "Create a separate file pane to the right of TREE-WINDOW when it fits."
+  (let ((right-windows (treemacs-magit--windows-to-right tree-window)))
+    (when (and (= (length right-windows) 1)
+               (>= (window-total-width (car right-windows))
+                   (* 2 treemacs-magit-min-content-window-width)))
+      (split-window-right nil (car right-windows)))))
 
 (defun treemacs-magit--revision-at-point ()
   "Return the commit represented by the current Magit buffer, if any."
@@ -397,19 +428,22 @@ commit, and PULL-REQUEST is its number."
                          (magit-toplevel))))
     (unless repository
       (user-error "The current buffer is not in a Git repository"))
-    (let ((revision (or (plist-get context :revision)
-                        treemacs-magit--revision))
-          (range (or (plist-get context :range) treemacs-magit--range))
-          (pull-request (or (plist-get context :pull-request)
-                            treemacs-magit--pull-request)))
-      (list (cond
+    (let* ((revision (or (plist-get context :revision)
+                         treemacs-magit--revision))
+           (range (or (plist-get context :range) treemacs-magit--range))
+           (pull-request (or (plist-get context :pull-request)
+                             treemacs-magit--pull-request))
+           (root
+            (cond
              (range
               (treemacs-magit--pr-root
                repository range revision pull-request))
              (revision
               (treemacs-magit--commit-root repository revision))
              (t
-              (treemacs-magit--dirty-root repository)))))))
+              (treemacs-magit--dirty-root repository)))))
+      (setq-local treemacs-magit--rendered-root root)
+      (list root))))
 
 (defun treemacs-magit--node-children (btn item)
   "Return children for ITEM, refreshing the dirty root when it is expanded."
@@ -525,6 +559,33 @@ With VIEW-FILE, visit the file contents instead of displaying its diff."
     (treemacs-magit--run-in-file-target
      #'find-file (treemacs-magit-node-path data))))
 
+(defun treemacs-magit--first-file-node (node)
+  "Return the first displayable file node below NODE."
+  (if (and (not (treemacs-magit-node-root node))
+           (not (treemacs-magit-node-children node))
+           (not (treemacs-magit-node-collapsed node))
+           (treemacs-magit-node-status node))
+      node
+    (seq-some #'treemacs-magit--first-file-node
+              (treemacs-magit-node-children node))))
+
+(defun treemacs-magit--display-initial-file ()
+  "Select and display the first changed file in the rendered tree."
+  (when-let* ((root treemacs-magit--rendered-root)
+              (data (treemacs-magit--first-file-node root)))
+    (let ((default-directory (treemacs-magit-node-repository data))
+          (file (file-relative-name
+                 (treemacs-magit-node-path data)
+                 (treemacs-magit-node-repository data)))
+          (status (treemacs-magit-node-status data)))
+      (when-let* ((position
+                   (text-property-any (point-min) (point-max) :node data))
+                  (path (treemacs-button-get position :path)))
+        (treemacs-goto-extension-node path))
+      (treemacs-magit--visit-diff data root file status)
+      (when (treemacs-magit--has-separate-file-target-p)
+        (treemacs-magit--visit-file-node data root file status)))))
+
 ;; The commit is stored on the root node.  Find it through the node's
 ;; Treemacs parent chain.
 (defun treemacs-magit--root-for-button (button)
@@ -610,6 +671,8 @@ events when the terminal reports them to Emacs."
     (set-window-parameter tree-window 'no-delete-other-windows nil)
     (set-window-parameter tree-window 'window-side nil)
     (set-window-parameter tree-window 'window-slot nil)
+    (treemacs-magit--resize-tree-window tree-window)
+    (treemacs-magit--ensure-wide-layout tree-window)
     (select-window tree-window)))
 
 (defun treemacs-magit--visit-file ()
@@ -730,7 +793,8 @@ events when the terminal reports them to Emacs."
       (setq-local window-size-fixed nil)
       (set-window-parameter (selected-window) 'no-delete-other-windows nil)
       (treemacs-magit--bind-buffer-keys)
-      (when (null (treemacs-magit--roots))
+      (if (treemacs-magit--first-file-node treemacs-magit--rendered-root)
+          (treemacs-magit--display-initial-file)
         (message "No changes found")))))
 
 (defun treemacs-magit--process-string (program &rest arguments)
@@ -830,7 +894,10 @@ the checkout helper again.  Otherwise use the `prc' task from
                       treemacs-magit--pull-request pull-request)
           (setq-local window-size-fixed nil)
           (set-window-parameter (selected-window) 'no-delete-other-windows nil)
-          (treemacs-magit--bind-buffer-keys))))))
+          (treemacs-magit--bind-buffer-keys)
+          (if (treemacs-magit--first-file-node treemacs-magit--rendered-root)
+              (treemacs-magit--display-initial-file)
+            (message "No changes found")))))))
 
 (provide 'treemacs-magit-mode)
 

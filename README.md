@@ -79,7 +79,8 @@ Run `M-x treemacs-magit-pr` from a Git repository to show the pull request assoc
 
 Use `C-u M-x treemacs-magit-pr` to enter a different pull request number. When switching is needed, the command runs `sake prc NUMBER` (the executable behind the shell alias `s prc`). The worktree must be clean before switching branches.
 
-The local `prc` helper passes `--force` to `gh pr checkout`. To prevent an unexpected reset, the command refuses checkout when a local branch with the PR head branch's name exists at a different commit; update or remove that branch explicitly before retrying.
+The local `prc` helper passes `--force` to `gh pr checkout`. A clean existing
+local branch with the same name may therefore be reset to the PR head.
 
 Pull request diffs use GitHub's base and head commit IDs with Git's three-dot range semantics. Selecting the root shows the complete PR diff; selecting a file shows only that file's PR diff.
 
@@ -102,11 +103,22 @@ Magit blob. Ordinary commit views continue to use read-only commit blobs.
 
 The tree window is dedicated to the Treemacs Magit buffer, so commands that
 display another buffer use a different window instead of replacing the tree.
-The package tries to reuse the window immediately to the right of the tree for
-diffs and commit messages. If a third vertical window is available, file
-contents are shown there; otherwise the diff window is reused.
+The first changed file is selected automatically. On a wide frame its diff is
+shown in the middle window and its contents in the rightmost window. When there
+is not enough width for both content windows, only the diff is shown beside the
+tree. Subsequent diff and file visits reuse those same windows.
 
 ## Configuration
+
+### Adaptive window layout
+
+Terminal and graphical Emacs frames are measured in character columns. A
+third window is created only when each of the two content windows can be at
+least this wide:
+
+```elisp
+(setq treemacs-magit-min-content-window-width 50)
+```
 
 ### Large pull request directories
 
