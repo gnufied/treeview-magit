@@ -616,8 +616,15 @@ events when the terminal reports them to Emacs."
         (goto-char point)
         (treemacs-magit--visit-current view-file)))))
 
+(defun treemacs-magit--cleanup-buffer ()
+  "Remove the current tree buffer's saved Magit context."
+  (setq treemacs-magit--contexts
+        (assq-delete-all (current-buffer) treemacs-magit--contexts)))
+
 (defun treemacs-magit--bind-buffer-keys ()
   "Bind default and alternate visit actions in the current tree buffer."
+  (use-local-map (copy-keymap (current-local-map)))
+  (add-hook 'kill-buffer-hook #'treemacs-magit--cleanup-buffer nil t)
   (let ((map (current-local-map)))
     (define-key map (kbd "S-<return>") #'treemacs-magit--visit-file)
     (define-key map [S-return] #'treemacs-magit--visit-file)
