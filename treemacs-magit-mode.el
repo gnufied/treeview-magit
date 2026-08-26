@@ -741,13 +741,13 @@ events when the terminal reports them to Emacs."
 ;; Always request Treemacs's text fallbacks so this tree never renders images.
 (treemacs-define-expandable-node-type treemacs-magit-node
   :closed-icon (if (treemacs-magit-node-root item)
-                   (treemacs-get-icon-value 'root-closed t)
+                   (treemacs-get-icon-value 'dir-closed t)
                  (if (or (treemacs-magit-node-children item)
                          (treemacs-magit-node-collapsed item))
                      (treemacs-get-icon-value 'dir-closed t)
                    ""))
   :open-icon (if (treemacs-magit-node-root item)
-                 (treemacs-get-icon-value 'root-open t)
+                 (treemacs-get-icon-value 'dir-open t)
                (if (or (treemacs-magit-node-children item)
                        (treemacs-magit-node-collapsed item))
                    (treemacs-get-icon-value 'dir-open t)
