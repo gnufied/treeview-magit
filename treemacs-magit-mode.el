@@ -32,6 +32,15 @@
 
 (defconst treemacs-magit--buffer-name "*Treemacs Magit*")
 
+(defface treemacs-magit-root-face
+  '((t (:inherit font-lock-constant-face)))
+  "Face used for root nodes in a Treemacs Magit tree.
+
+Unlike `treemacs-root-face', this face uses the normal font size and weight so
+that repository, commit, and pull-request roots align with the rest of the
+tree in both graphical and terminal Emacs."
+  :group 'treemacs)
+
 (defcustom treemacs-magit-fold-min-depth 3
   "Rendered tree depth beyond which directory chains are folded.
 
@@ -453,7 +462,7 @@ commit, and PULL-REQUEST is its number."
 (defun treemacs-magit--node-face (node)
   "Return the face for NODE."
   (cond
-   ((treemacs-magit-node-root node) 'treemacs-root-face)
+   ((treemacs-magit-node-root node) 'treemacs-magit-root-face)
    ((or (treemacs-magit-node-children node)
         (treemacs-magit-node-collapsed node))
     'treemacs-directory-face)
