@@ -172,6 +172,18 @@ Icons require a [Nerd Font](https://www.nerdfonts.com/) in your terminal or GUI 
 (setq treemacs-magit-status-icon-separator " ")
 ```
 
+## Tests
+
+Run the ERT suite with:
+
+```sh
+make test
+```
+
+The command loads Magit and Treemacs from `~/.emacs.d/straight/build` by
+default. Override `EMACS` or `STRAIGHT_BUILD` when using another executable or
+straight.el build directory.
+
 ## License
 
 See the source file for license information.
