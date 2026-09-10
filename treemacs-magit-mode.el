@@ -812,6 +812,11 @@ events when the terminal reports them to Emacs."
       (treemacs-magit--bind-buffer-keys)
       (if (treemacs-magit--first-file-node treemacs-magit--rendered-root)
           (treemacs-magit--display-initial-file)
+        (when-let* ((position
+                     (text-property-any (point-min) (point-max)
+                                        :node treemacs-magit--rendered-root))
+                    (path (treemacs-button-get position :path)))
+          (treemacs-goto-extension-node path))
         (message "No changes found")))))
 
 (defun treemacs-magit--process-string (program &rest arguments)
@@ -914,6 +919,11 @@ the checkout helper again.  Otherwise use the `prc' task from
           (treemacs-magit--bind-buffer-keys)
           (if (treemacs-magit--first-file-node treemacs-magit--rendered-root)
               (treemacs-magit--display-initial-file)
+            (when-let* ((position
+                         (text-property-any (point-min) (point-max)
+                                            :node treemacs-magit--rendered-root))
+                        (path (treemacs-button-get position :path)))
+              (treemacs-goto-extension-node path))
             (message "No changes found")))))))
 
 (provide 'treemacs-magit-mode)
