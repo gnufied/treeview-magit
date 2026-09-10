@@ -109,6 +109,7 @@ the tree can be divided into two windows at least this wide."
 (defvar-local treemacs-magit--revision nil)
 (defvar-local treemacs-magit--range nil)
 (defvar-local treemacs-magit--pull-request nil)
+(defvar-local treemacs-magit--range-label nil)
 (defvar-local treemacs-magit--rendered-root nil)
 
 (defun treemacs-magit--tree-window ()
@@ -399,8 +400,8 @@ depth, so each fold makes room for the levels below it."
     (treemacs-magit--fold-node root 0)
     root))
 
-(defun treemacs-magit--pr-files (range)
-  "Return files changed by pull request RANGE."
+(defun treemacs-magit--range-files (range)
+  "Return files changed by revision RANGE."
   (magit-git-items "diff" "-z" "--name-only" range "--"))
 
 (defun treemacs-magit--pr-root (repository range revision pull-request)
@@ -421,11 +422,34 @@ commit, and PULL-REQUEST is its number."
                :pull-request pull-request
                :repository repository)))
     (let ((default-directory repository))
-      (dolist (file (treemacs-magit--pr-files range))
+      (dolist (file (treemacs-magit--range-files range))
         (if-let* ((directory
                    (treemacs-magit--collapsed-directory-for-file file)))
             (treemacs-magit--insert-file root directory nil t)
           (treemacs-magit--insert-file root file 'committed))))
+    (treemacs-magit--fold-node root 0)
+    root))
+
+(defun treemacs-magit--branch-root
+    (repository range revision range-label)
+  "Build a branch-comparison tree for RANGE in REPOSITORY.
+
+REVISION is the current HEAD commit and RANGE-LABEL describes the compared
+branches."
+  (let ((root (treemacs-magit-node-create
+               :name (format "%s (%s)"
+                             (file-name-nondirectory
+                              (directory-file-name repository))
+                             range-label)
+               :key repository
+               :path repository
+               :root t
+               :revision revision
+               :range range
+               :repository repository)))
+    (let ((default-directory repository))
+      (dolist (file (treemacs-magit--range-files range))
+        (treemacs-magit--insert-file root file 'committed)))
     (treemacs-magit--fold-node root 0)
     root))
 
@@ -442,11 +466,16 @@ commit, and PULL-REQUEST is its number."
            (range (or (plist-get context :range) treemacs-magit--range))
            (pull-request (or (plist-get context :pull-request)
                              treemacs-magit--pull-request))
+           (range-label (or (plist-get context :range-label)
+                            treemacs-magit--range-label))
            (root
             (cond
-             (range
+             (pull-request
               (treemacs-magit--pr-root
                repository range revision pull-request))
+             (range
+              (treemacs-magit--branch-root
+               repository range revision range-label))
              (revision
               (treemacs-magit--commit-root repository revision))
              (t
@@ -678,6 +707,7 @@ events when the terminal reports them to Emacs."
               (let ((left-window (treemacs-magit--leftmost-window)))
                 (setq replaced-buffer (window-buffer left-window))
                 left-window))))
+    (set-window-dedicated-p tree-window nil)
     (set-window-buffer tree-window buffer)
     (when (and replaced-buffer
                (buffer-live-p replaced-buffer)
@@ -796,7 +826,8 @@ events when the terminal reports them to Emacs."
       (setq-local treemacs-magit--repository repository
                   treemacs-magit--revision revision
                   treemacs-magit--range nil
-                  treemacs-magit--pull-request nil)
+                  treemacs-magit--pull-request nil
+                  treemacs-magit--range-label nil)
       (setq treemacs-magit--contexts
             (cons (cons buffer (list :repository repository
                                      :revision revision))
@@ -806,7 +837,8 @@ events when the terminal reports them to Emacs."
       (setq-local treemacs-magit--repository repository
                   treemacs-magit--revision revision
                   treemacs-magit--range nil
-                  treemacs-magit--pull-request nil)
+                  treemacs-magit--pull-request nil
+                  treemacs-magit--range-label nil)
       (setq-local window-size-fixed nil)
       (set-window-parameter (selected-window) 'no-delete-other-windows nil)
       (treemacs-magit--bind-buffer-keys)
@@ -866,6 +898,74 @@ out."
      treemacs-magit-pr-checkout-program
      "prc" (number-to-string pull-request))))
 
+(defun treemacs-magit--display-range
+    (repository revision range &optional pull-request range-label)
+  "Display RANGE in REPOSITORY as a Treemacs Magit tree.
+
+REVISION is the range's head commit.  PULL-REQUEST identifies a GitHub pull
+request; otherwise RANGE-LABEL describes a branch comparison."
+  (let ((buffer (get-buffer-create treemacs-magit--buffer-name)))
+    (treemacs-magit--display-buffer buffer)
+    (setq-local treemacs-magit--repository repository
+                treemacs-magit--revision revision
+                treemacs-magit--range range
+                treemacs-magit--pull-request pull-request
+                treemacs-magit--range-label range-label)
+    (setq treemacs-magit--contexts
+          (cons (cons buffer (list :repository repository
+                                   :revision revision
+                                   :range range
+                                   :pull-request pull-request
+                                   :range-label range-label))
+                (assq-delete-all buffer treemacs-magit--contexts)))
+    (treemacs-initialize treemacs-magit-root
+      :with-expand-depth t)
+    (setq-local treemacs-magit--repository repository
+                treemacs-magit--revision revision
+                treemacs-magit--range range
+                treemacs-magit--pull-request pull-request
+                treemacs-magit--range-label range-label)
+    (setq-local window-size-fixed nil)
+    (set-window-parameter (selected-window) 'no-delete-other-windows nil)
+    (treemacs-magit--bind-buffer-keys)
+    (if (treemacs-magit--first-file-node treemacs-magit--rendered-root)
+        (treemacs-magit--display-initial-file)
+      (when-let* ((position
+                   (text-property-any (point-min) (point-max)
+                                      :node treemacs-magit--rendered-root))
+                  (path (treemacs-button-get position :path)))
+        (treemacs-goto-extension-node path))
+      (message "No changes found"))))
+
+;;;###autoload
+(defun treemacs-magit-branch (branch)
+  "Compare the current branch with BRANCH in a Treemacs tree.
+
+Use Git's three-dot range semantics to show changes on the current branch
+since its merge base with BRANCH.  This command does not check out or modify
+either branch."
+  (interactive
+   (progn
+     (unless (magit-toplevel)
+       (user-error "The current buffer is not in a Git repository"))
+     (list (magit-read-branch-prefer-other
+            "Compare current branch against"))))
+  (let ((repository (magit-toplevel)))
+    (unless repository
+      (user-error "The current buffer is not in a Git repository"))
+    (let* ((default-directory repository)
+           (head (magit-rev-verify "HEAD"))
+           (base (magit-rev-verify branch))
+           (current (or (magit-get-current-branch)
+                        (and head (substring head 0 (min 8 (length head)))))))
+      (unless base
+        (user-error "Branch does not resolve to a commit: %s" branch))
+      (unless head
+        (user-error "The current repository has no HEAD commit"))
+      (treemacs-magit--display-range
+       repository head (format "%s...%s" base head)
+       nil (format "%s vs %s" current branch)))))
+
 ;;;###autoload
 (defun treemacs-magit-pr (&optional pull-request)
   "Check out and display all files changed by a GitHub pull request.
@@ -895,36 +995,8 @@ the checkout helper again.  Otherwise use the `prc' task from
         (unless (and (magit-rev-verify base) (magit-rev-verify head))
           (user-error "PR #%s base or head commit is unavailable locally"
                       pull-request))
-        (let* ((range (format "%s...%s" base head))
-               (buffer (get-buffer-create treemacs-magit--buffer-name)))
-          (treemacs-magit--display-buffer buffer)
-          (setq-local treemacs-magit--repository repository
-                      treemacs-magit--revision head
-                      treemacs-magit--range range
-                      treemacs-magit--pull-request pull-request)
-          (setq treemacs-magit--contexts
-                (cons (cons buffer (list :repository repository
-                                         :revision head
-                                         :range range
-                                         :pull-request pull-request))
-                      (assq-delete-all buffer treemacs-magit--contexts)))
-          (treemacs-initialize treemacs-magit-root
-            :with-expand-depth t)
-          (setq-local treemacs-magit--repository repository
-                      treemacs-magit--revision head
-                      treemacs-magit--range range
-                      treemacs-magit--pull-request pull-request)
-          (setq-local window-size-fixed nil)
-          (set-window-parameter (selected-window) 'no-delete-other-windows nil)
-          (treemacs-magit--bind-buffer-keys)
-          (if (treemacs-magit--first-file-node treemacs-magit--rendered-root)
-              (treemacs-magit--display-initial-file)
-            (when-let* ((position
-                         (text-property-any (point-min) (point-max)
-                                            :node treemacs-magit--rendered-root))
-                        (path (treemacs-button-get position :path)))
-              (treemacs-goto-extension-node path))
-            (message "No changes found")))))))
+        (treemacs-magit--display-range
+         repository head (format "%s...%s" base head) pull-request)))))
 
 (provide 'treemacs-magit-mode)
 

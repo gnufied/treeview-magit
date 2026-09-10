@@ -4,7 +4,7 @@ An Emacs package that displays Git changes as a [Treemacs](https://github.com/Al
 
 ## What it does
 
-`treemacs-magit-mode` opens a Treemacs side buffer showing the files that have changed in the current Git repository. It can also show the files changed by a specific commit when invoked from a Magit revision or log buffer, or all files changed by a GitHub pull request.
+`treemacs-magit-mode` opens a Treemacs side buffer showing the files that have changed in the current Git repository. It can also show the files changed by a specific commit, the current branch compared with another branch, or all files changed by a GitHub pull request.
 
 Files are grouped into a collapsible directory tree. Changed files are annotated with Nerd Font status icons (configurable):
 
@@ -49,7 +49,7 @@ With `use-package` and `straight.el`:
 ```elisp
 (use-package treemacs-magit-mode
   :straight (treemacs-magit-mode :type git :host github :repo "gnufied/treeview-magit")
-  :commands (treemacs-magit treemacs-magit-pr))
+  :commands (treemacs-magit treemacs-magit-branch treemacs-magit-pr))
 ```
 
 ### Manual
@@ -66,7 +66,7 @@ Clone this repository and add it to your `load-path`:
 ```elisp
 (use-package treemacs-magit-mode
   :load-path "/path/to/treeview-magit"
-  :commands (treemacs-magit treemacs-magit-pr))
+  :commands (treemacs-magit treemacs-magit-branch treemacs-magit-pr))
 ```
 
 ## Usage
@@ -74,6 +74,8 @@ Clone this repository and add it to your `load-path`:
 Run `M-x treemacs-magit` from a buffer inside a Git repository to open a Treemacs view of all changed files.
 
 When point is on a commit in a `magit-revision-mode` or `magit-log-mode` buffer, `M-x treemacs-magit` shows the files touched by that commit instead.
+
+Run `M-x treemacs-magit-branch` and choose a local or remote branch to compare it with the currently checked-out branch. The command uses Git's three-dot range semantics, showing changes on the current branch since the branches' merge base. It does not check out or modify either branch. Selecting the root shows the complete range diff, and selecting a file shows its range diff.
 
 Run `M-x treemacs-magit-pr` from a Git repository to show the pull request associated with the current branch. GitHub CLI resolves that association from the branch, so another locally stored PR number is unnecessary. If the exact PR head is already checked out, checkout is skipped.
 
