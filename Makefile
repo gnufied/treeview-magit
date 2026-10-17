@@ -8,4 +8,5 @@ test:
 	  -L . -L test \
 	  -l treemacs-magit-mode.el \
 	  -l treemacs-magit-mode-test.el \
+	  -l treemacs-magit-review-test.el \
 	  -f ert-run-tests-batch-and-exit

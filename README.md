@@ -103,6 +103,8 @@ Magit blob. Ordinary commit views continue to use read-only commit blobs.
 | `<mouse-1>` | Open the diff for the clicked file |
 | `C-<mouse-1>` | Visit the clicked file |
 
+Press `r` to list review comments for this project and checked-out branch.
+
 The tree window is dedicated to the Treemacs Magit buffer, so commands that
 display another buffer use a different window instead of replacing the tree.
 The first changed file is selected automatically. On a wide frame its diff is
@@ -111,6 +113,81 @@ is not enough width for both content windows, only the diff is shown beside the
 tree. Subsequent diff and file visits reuse those same windows.
 
 ## Configuration
+
+### Branch-local review comments
+
+The companion `treemacs-magit-review-mode` records private code review comments
+separately from regular bookmarks. Comments belong to a Git repository and branch;
+checking out another branch changes which comments are shown. Linked worktrees
+share repository storage, with independent branch and buffer state.
+
+From a source file, run `M-x treemacs-magit-review-comment` to comment on the
+current line or selected region. Enter multiline text, then use `C-c C-c` to save
+or `C-c C-k` to cancel. Invoking the command on a commented line edits its comment;
+use a prefix argument to add another. Each save writes immediately, without saving
+the source file. An editor left open across checkout saves to its original branch.
+
+The `C-c C-c`, `C-c C-k`, and `C-c C-r` bindings apply only in the dedicated
+comment editor. List actions are local to the review list, and `r` is local to
+the tree buffer. The source-buffer review minor mode defines no default key
+bindings, and the package installs no global bindings. Bind the public commands
+yourself using your preferred keys.
+
+Run **`M-x treemacs-magit-review-list`** from anywhere in the project, or press `r`
+in the tree, to read all comments for the current branch. The list works after an
+Emacs restart without enabling markers first. It groups full comment text by
+relative file path, including comments on unchanged or missing files.
+
+- `RET`: visit the code after verifying its location; show the saved snippet and
+  an explanation if the location is missing, outdated, or ambiguous.
+- `n` / `p`: next/previous comment.
+- `e`: edit the comment.
+- `d`: delete it with confirmation.
+- `g`: reload from disk and discover the checkout's current branch.
+
+The main package autoloads these commands. To load only the companion:
+
+```elisp
+(require 'treemacs-magit-review)
+```
+
+Adding a comment enables markers in that source buffer. Use
+`M-x treemacs-magit-review-mode` to toggle them. Newly visited files in an active
+review checkout also show markers. Review markers use Nerd Font U+EC37, with an
+independent face and an ASCII alternative, so they are distinct from bookmark
+markers:
+
+```elisp
+(setq treemacs-magit-review-margin-marker "\uec37"
+      treemacs-magit-review-margin-ascii-marker "!"
+      treemacs-magit-review-margin-use-ascii-marker nil)
+;; Customize `treemacs-magit-review-margin-face' separately from bookmarks.
+```
+
+Branches changed outside Emacs are checked automatically, and before review
+commands. If an old-branch buffer is modified or stale, markers and capture are
+suspended. Save/revert deliberately, then invoke the comment command and confirm
+adopting the saved buffer for the current branch. Capture is blocked during a
+rebase, cherry-pick, or revert sequence.
+
+Data is UTF-8 JSON under
+`<git-common-dir>/treemacs-magit-review/scopes/<scope-hash>.json`. It survives
+checkout, but is not pushed, cloned, or included in tracked-file backups; back up
+that metadata directory to retain reviews. Renaming a branch does not automatically
+transfer comments, and deleting a branch does not remove its saved file. Reusing
+a branch name reuses its review; detached HEAD has a separate scope per commit.
+
+Concurrent writers use exclusive lock directories and generation checks. If
+another writer saved while an editor was open, the save fails and retains the
+draft. Use `C-c C-r` in the editor to explicitly accept the latest saved generation
+while keeping the draft, then `C-c C-c` to save its replacement. A stale
+`<scope-hash>.json.lock` directory is never removed automatically: remove it only
+after establishing that its writer is no longer active.
+
+This version supports local worktree source files. Direct capture from Magit
+diffs/blobs, Git-assisted rename relocation, tree comment counts, and additional
+review lifecycle commands are deferred. Comments with uncertain locations remain
+readable and editable in the list.
 
 ### Adaptive window layout
 

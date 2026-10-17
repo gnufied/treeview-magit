@@ -22,6 +22,10 @@
 (require 'treemacs)
 (require 'treemacs-treelib)
 
+(autoload 'treemacs-magit-review-comment "treemacs-magit-review" nil t)
+(autoload 'treemacs-magit-review-list "treemacs-magit-review" nil t)
+(autoload 'treemacs-magit-review-mode "treemacs-magit-review" nil t)
+
 (declare-function treemacs-define-doubleclick-action "treemacs-mouse-interface"
                   (state action))
 
@@ -671,6 +675,7 @@ events when the terminal reports them to Emacs."
     (define-key map [C-down-mouse-1] #'treemacs-magit--mouse-file)
     (define-key map (kbd "c") #'treemacs-magit-commit)
     (define-key map (kbd "s") #'treemacs-magit-stage-file-at-point)
+    (define-key map (kbd "r") #'treemacs-magit-review-list)
     (define-key map (kbd "q") #'treemacs-magit-quit)))
 
 (defun treemacs-magit-quit ()
