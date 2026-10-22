@@ -17,7 +17,8 @@
   `(let* ((root (file-name-as-directory (make-temp-file "review-test-" t)))
           (default-directory root))
      (unwind-protect
-         (progn
+         (save-window-excursion
+           (switch-to-buffer (current-buffer))
            (treemacs-magit-review-test--git "init" "-q" "-b" "review/a")
            (treemacs-magit-review-test--git "config" "user.name" "Review Test")
            (treemacs-magit-review-test--git "config" "user.email" "review@example.invalid")
