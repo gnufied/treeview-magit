@@ -844,7 +844,7 @@ events when the terminal reports them to Emacs."
                   treemacs-magit--range nil
                   treemacs-magit--pull-request nil
                   treemacs-magit--range-label nil)
-      (setq-local window-size-fixed nil)
+      (setq-local window-size-fixed 'width)
       (set-window-parameter (selected-window) 'no-delete-other-windows nil)
       (treemacs-magit--bind-buffer-keys)
       (if (treemacs-magit--first-file-node treemacs-magit--rendered-root)
@@ -930,7 +930,7 @@ request; otherwise RANGE-LABEL describes a branch comparison."
                 treemacs-magit--range range
                 treemacs-magit--pull-request pull-request
                 treemacs-magit--range-label range-label)
-    (setq-local window-size-fixed nil)
+    (setq-local window-size-fixed 'width)
     (set-window-parameter (selected-window) 'no-delete-other-windows nil)
     (treemacs-magit--bind-buffer-keys)
     (if (treemacs-magit--first-file-node treemacs-magit--rendered-root)

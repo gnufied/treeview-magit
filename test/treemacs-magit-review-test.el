@@ -54,6 +54,33 @@
    snapshot (lambda (data) (setf (alist-get 'comments data)
                                 (vconcat (alist-get 'comments data) (vector comment))))))
 
+(ert-deftest treemacs-magit-review-test-auto-enable-skips-git-metadata ()
+  (treemacs-magit-review-test--repo
+    (with-current-buffer (find-file-noselect "sample.txt")
+      (treemacs-magit-review-mode 1))
+    (dolist (name '("COMMIT_EDITMSG" "MERGE_MSG" "config" "sequencer/todo"))
+      (let ((file (expand-file-name name (expand-file-name ".git" root))))
+        (make-directory (file-name-directory file) t)
+        (unless (file-exists-p file)
+          (with-temp-file file (insert "# Git metadata\n")))
+        (with-current-buffer (find-file-noselect file)
+          (unwind-protect
+              (should-not treemacs-magit-review-mode)
+            ;; Magit protects commit buffers from ordinary kill-buffer calls.
+            (remove-hook 'kill-buffer-query-functions
+                         #'with-editor-kill-buffer-noop t)))))))
+
+(ert-deftest treemacs-magit-review-test-auto-enable-source-files ()
+  (treemacs-magit-review-test--repo
+    (with-current-buffer (find-file-noselect "sample.txt")
+      (treemacs-magit-review-mode 1))
+    (dolist (name '("other.txt" ".gitignore"))
+      (with-temp-file name (insert "source\n"))
+      (with-current-buffer (find-file-noselect name)
+        (should treemacs-magit-review-mode)
+        (should (equal root (treemacs-magit--review-context-root
+                             treemacs-magit--review-context)))))))
+
 (ert-deftest treemacs-magit-review-test-storage-roundtrip-and-isolation ()
   (treemacs-magit-review-test--repo
     (let* ((context (treemacs-magit--review-context))

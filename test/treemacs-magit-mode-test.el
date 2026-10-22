@@ -193,6 +193,20 @@
                     :type 'user-error))
     (should-not process-called)))
 
+(defun treemacs-magit-test--check-tree-width-after-window-deletion ()
+  "Check that closing either content column preserves the tree width."
+  (let* ((tree (treemacs-magit--tree-window))
+         (content (treemacs-magit--target-window))
+         (width (window-total-width tree)))
+    (should (eq (buffer-local-value 'window-size-fixed (window-buffer tree))
+                'width))
+    (dolist (side '(left right))
+      (let ((other (split-window content nil side)))
+        ;; Deleting the middle column reproduced the unwanted tree expansion.
+        (delete-window (if (eq side 'left) other content))
+        (setq content (if (eq side 'left) content other))
+        (should (= (window-total-width tree) width))))))
+
 (ert-deftest treemacs-magit-test-main-command-empty-tree-selects-root ()
   (let ((treemacs-magit--contexts nil)
         (treemacs-magit-min-content-window-width 1000)
@@ -215,6 +229,7 @@
               (should (treemacs-magit-node-root node))
               (should-not treemacs-magit--revision)
               (should-not treemacs-magit--range)))
+          (treemacs-magit-test--check-tree-width-after-window-deletion)
           (kill-buffer buffer)
           (setq buffer nil)
           (should-not treemacs-magit--contexts))
@@ -246,6 +261,7 @@
               (should (eq (key-binding [mouse-1])
                           #'treemacs-magit--mouse-diff))))
           (should (eq (lookup-key shared-map [mouse-1]) shared-binding))
+          (treemacs-magit-test--check-tree-width-after-window-deletion)
           (kill-buffer buffer)
           (setq buffer nil)
           (should-not treemacs-magit--contexts))

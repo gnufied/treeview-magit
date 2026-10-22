@@ -876,7 +876,13 @@ RET visits, n/p move, e edits, d deletes, and g reloads the current branch."
                                         (and treemacs-magit-review-mode treemacs-magit--review-context
                                              (treemacs-magit--review-context-root treemacs-magit--review-context))))
                                     (buffer-list))))))
-      (when (seq-some (lambda (root) (file-in-directory-p buffer-file-name root)) roots)
+      (when (and (seq-some (lambda (root) (file-in-directory-p buffer-file-name root)) roots)
+                 ;; Git metadata files such as COMMIT_EDITMSG are below the
+                 ;; checkout root, but are not worktree source files.
+                 (equal (treemacs-magit--review-git
+                         (file-name-directory buffer-file-name)
+                         "rev-parse" "--is-inside-work-tree")
+                        "true"))
         (let ((context (treemacs-magit--review-context)))
           (when (member (treemacs-magit--review-context-root context) roots)
             (treemacs-magit-review-mode 1)))))))

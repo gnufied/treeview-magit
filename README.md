@@ -191,6 +191,9 @@ readable and editable in the list.
 
 ### Adaptive window layout
 
+The tree pane keeps its width when adjacent content windows are closed,
+matching Treemacs.
+
 Terminal and graphical Emacs frames are measured in character columns. A
 third window is created only when each of the two content windows can be at
 least this wide:
