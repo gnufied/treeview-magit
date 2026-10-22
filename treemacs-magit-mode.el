@@ -215,6 +215,44 @@ before running FUNCTION."
   (not (eq (treemacs-magit--target-window)
            (treemacs-magit--file-target-window))))
 
+(defun treemacs-magit--call-with-unlocked-tree-width (fn &rest args)
+  "Call FN with ARGS while allowing the Treemacs Magit window to resize."
+  (if-let* ((tree-window (treemacs-magit--tree-window))
+            (tree-buffer (window-buffer tree-window))
+            (orig-buffer (current-buffer)))
+      (with-current-buffer tree-buffer
+        (let ((window-size-fixed nil))
+          (with-current-buffer orig-buffer
+            (apply fn args))))
+    (apply fn args)))
+
+(defun treemacs-magit--enlarge-window-advice (fn delta &optional horizontal)
+  "Allow `enlarge-window' to resize the tree window when necessary."
+  (if (and horizontal
+           (if-let* ((tree-window (treemacs-magit--tree-window)))
+               (or (eq (selected-window) tree-window)
+                   (not (or (window-resizable-p nil delta horizontal)
+                            (window-resizable-p
+                             nil delta horizontal 'preserved))))))
+      (treemacs-magit--call-with-unlocked-tree-width fn delta horizontal)
+    (funcall fn delta horizontal)))
+
+(defun treemacs-magit--shrink-window-advice (fn delta &optional horizontal)
+  "Allow `shrink-window' to resize the tree window when necessary."
+  (if (and horizontal
+           (if-let* ((tree-window (treemacs-magit--tree-window)))
+               (or (eq (selected-window) tree-window)
+                   (not (or (window-resizable-p nil (- delta) horizontal)
+                            (window-resizable-p
+                             nil (- delta) horizontal 'preserved))))))
+      (treemacs-magit--call-with-unlocked-tree-width fn delta horizontal)
+    (funcall fn delta horizontal)))
+
+(advice-add #'adjust-window-trailing-edge :around
+            #'treemacs-magit--call-with-unlocked-tree-width)
+(advice-add #'enlarge-window :around #'treemacs-magit--enlarge-window-advice)
+(advice-add #'shrink-window :around #'treemacs-magit--shrink-window-advice)
+
 (defun treemacs-magit--resize-tree-window (tree-window)
   "Shrink TREE-WINDOW to its preferred width when possible."
   (when (window-combined-p tree-window t)
@@ -224,9 +262,11 @@ before running FUNCTION."
                                  (floor (* frame-width 0.2))))
            (delta (- preferred-width (window-total-width tree-window))))
       (when (< delta 0)
-        (let ((resizable (window-resizable tree-window delta t)))
-          (when (< resizable 0)
-            (window-resize tree-window resizable t)))))))
+        (with-current-buffer (window-buffer tree-window)
+          (let* ((window-size-fixed nil)
+                 (resizable (window-resizable tree-window delta t)))
+            (when (< resizable 0)
+              (window-resize tree-window resizable t))))))))
 
 (defun treemacs-magit--ensure-wide-layout (tree-window)
   "Create a separate file pane to the right of TREE-WINDOW when it fits."
@@ -787,6 +827,7 @@ events when the terminal reports them to Emacs."
          (magit-stage-files (list file)))))
     (treemacs-initialize treemacs-magit-root
       :with-expand-depth t)
+    (setq-local window-size-fixed 'width)
     (treemacs-goto-extension-node path)))
 
 ;; Always request Treemacs's text fallbacks so this tree never renders images.
