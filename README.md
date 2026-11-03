@@ -105,12 +105,21 @@ Magit blob. Ordinary commit views continue to use read-only commit blobs.
 
 Press `r` to list review comments for this project and checked-out branch.
 
+Staging with `s` works anywhere on a file's row, including its indentation
+and status icon. Staging and unstaging preserve the tree's keyboard and mouse
+bindings.
+
 The tree window is dedicated to the Treemacs Magit buffer, so commands that
 display another buffer use a different window instead of replacing the tree.
 The first changed file is selected automatically. On a wide frame its diff is
 shown in the middle window and its contents in the rightmost window. When there
 is not enough width for both content windows, only the diff is shown beside the
 tree. Subsequent diff and file visits reuse those same windows.
+
+Shift-left-click opens only the clicked file in the window immediately to the
+right of the tree. In a three-column layout, this replaces the middle window's
+contents and leaves the rightmost window alone. It does not open a diff. In a
+terminal, this requires the terminal to forward Shift-mouse events to Emacs.
 
 ## Configuration
 

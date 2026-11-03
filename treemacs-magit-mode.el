@@ -115,6 +115,8 @@ the tree can be divided into two windows at least this wide."
 (defvar-local treemacs-magit--pull-request nil)
 (defvar-local treemacs-magit--range-label nil)
 (defvar-local treemacs-magit--rendered-root nil)
+(defvar treemacs-magit--file-only nil
+  "Non-nil while visiting only file contents in the window beside the tree.")
 
 (defun treemacs-magit--tree-window ()
   "Return the window displaying the Treemacs Magit buffer."
@@ -167,11 +169,11 @@ in a three-column layout."
 (defun treemacs-magit--file-target-window ()
   "Return the window where file contents should be displayed.
 
-Use an already-existing third vertical split when present.  Otherwise reuse the
-normal diff target window."
+Use the normal diff target window for a file-only visit.  Otherwise use an
+already-existing third vertical split when present, or the normal diff target."
   (let* ((diff-window (treemacs-magit--target-window))
          (rightmost-window (treemacs-magit--rightmost-window-from diff-window)))
-    (if (eq diff-window rightmost-window)
+    (if (or treemacs-magit--file-only (eq diff-window rightmost-window))
         diff-window
       rightmost-window)))
 
@@ -568,7 +570,9 @@ branches."
 (defun treemacs-magit--visit-current (&optional view-file)
   "Open the node at point.
 
-With VIEW-FILE, visit the file contents instead of displaying its diff."
+With VIEW-FILE, visit file contents, also showing the diff when a separate
+file window exists.  If VIEW-FILE is `only', show only file contents in the
+window immediately beside the tree."
   (let* ((node (treemacs-current-button))
          (data (and node (treemacs-button-get node :node)))
          (root (and node (treemacs-magit--root-for-button node))))
@@ -594,11 +598,13 @@ With VIEW-FILE, visit the file contents instead of displaying its diff."
                        (treemacs-magit-node-path data)
                        (treemacs-magit-node-repository data)))
                 (status (treemacs-magit-node-status data)))
-            (when (or (not view-file)
-                      (treemacs-magit--has-separate-file-target-p))
+            (when (and (not (eq view-file 'only))
+                       (or (not view-file)
+                           (treemacs-magit--has-separate-file-target-p)))
               (treemacs-magit--visit-diff data root file status))
             (when view-file
-              (treemacs-magit--visit-file-node data root file status))))))))
+              (let ((treemacs-magit--file-only (eq view-file 'only)))
+                (treemacs-magit--visit-file-node data root file status)))))))))
 
 (defun treemacs-magit--visit-diff (data root file status)
   "Display the diff for DATA with ROOT, FILE, and STATUS."
@@ -713,6 +719,8 @@ events when the terminal reports them to Emacs."
     (define-key map [mouse-1] #'treemacs-magit--mouse-diff)
     (define-key map [C-mouse-1] #'treemacs-magit--mouse-file)
     (define-key map [C-down-mouse-1] #'treemacs-magit--mouse-file)
+    (define-key map [S-mouse-1] #'treemacs-magit--mouse-file-only)
+    (define-key map [S-down-mouse-1] #'ignore)
     (define-key map (kbd "c") #'treemacs-magit-commit)
     (define-key map (kbd "s") #'treemacs-magit-stage-file-at-point)
     (define-key map (kbd "r") #'treemacs-magit-review-list)
@@ -781,6 +789,11 @@ events when the terminal reports them to Emacs."
   (interactive "e")
   (treemacs-magit--mouse-action event t))
 
+(defun treemacs-magit--mouse-file-only (event)
+  "Visit only the file clicked by EVENT in the window beside the tree."
+  (interactive "e")
+  (treemacs-magit--mouse-action event 'only))
+
 (defun treemacs-magit-commit ()
   "Commit the currently staged changes from the Treemacs Magit view."
   (interactive)
@@ -827,7 +840,16 @@ events when the terminal reports them to Emacs."
          (magit-stage-files (list file)))))
     (treemacs-initialize treemacs-magit-root
       :with-expand-depth t)
+    ;; Initialization reactivates `treemacs-mode', clearing local state and
+    ;; our private keymap.  Restore these just as when first opening the tree.
+    (setq-local treemacs-magit--repository (treemacs-magit-node-repository root)
+                treemacs-magit--revision (treemacs-magit-node-revision root)
+                treemacs-magit--range (treemacs-magit-node-range root)
+                treemacs-magit--pull-request (treemacs-magit-node-pull-request root)
+                treemacs-magit--range-label nil)
     (setq-local window-size-fixed 'width)
+    (set-window-parameter (selected-window) 'no-delete-other-windows nil)
+    (treemacs-magit--bind-buffer-keys)
     (treemacs-goto-extension-node path)))
 
 ;; Always request Treemacs's text fallbacks so this tree never renders images.

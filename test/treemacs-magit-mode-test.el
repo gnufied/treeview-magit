@@ -326,6 +326,110 @@
       (when (buffer-live-p ordinary)
         (kill-buffer ordinary)))))
 
+(defun treemacs-magit-test--shift-click-file (columns)
+  "Check modified mouse visits with COLUMNS windows in a disposable repo."
+  (let* ((directory (file-name-as-directory (make-temp-file "tm-mouse-" t)))
+         (existing-buffers (buffer-list))
+         (default-directory directory)
+         (file (expand-file-name "file.txt" directory))
+         (treemacs-magit--buffer-name " *Treemacs Magit mouse test*")
+         (treemacs-magit--contexts nil)
+         (treemacs-magit-min-content-window-width 1000)
+         (sentinel (generate-new-buffer " *mouse test sentinel*")))
+    (unwind-protect
+        (save-window-excursion
+          (should (zerop (call-process "git" nil nil nil "init" "-q")))
+          (with-temp-file file (insert "before\n"))
+          (should (zerop (call-process "git" nil nil nil "add" "file.txt")))
+          (should (zerop
+                   (call-process "git" nil nil nil
+                                 "-c" "user.name=Test" "-c" "user.email=test@example.invalid"
+                                 "-c" "core.hooksPath=/dev/null"
+                                 "commit" "-qm" "Initial")))
+          (with-temp-file file (insert "after\n"))
+          (delete-other-windows)
+          (treemacs-magit)
+          (let* ((tree (treemacs-magit--tree-window))
+                 (middle (treemacs-magit--target-window))
+                 (right (if (= columns 3)
+                            (split-window middle nil 'right)
+                          middle))
+                 (position (with-current-buffer (window-buffer tree)
+                             (text-property-any
+                              (point-min) (point-max) :node
+                              (treemacs-magit--first-file-node
+                               treemacs-magit--rendered-root))))
+                 (event (list 'S-mouse-1 (list tree position '(0 . 0) 0)))
+                 (diff-visits 0))
+            (should position)
+            (set-window-buffer right sentinel)
+            ;; Every rebuild must retain staging and mouse actions.  Exercise
+            ;; the whole row: indentation, status icon, filename, and newline.
+            (with-selected-window tree
+              (cl-loop for location in '(indent icon name end indent end)
+                       for staged = t then (not staged)
+                       do
+                       (goto-char position)
+                       (pcase location
+                         ('indent (beginning-of-line))
+                         ('icon nil)
+                         ('name (search-forward "file.txt") (backward-char 1))
+                         ('end (end-of-line)))
+                       (call-interactively (key-binding "s"))
+                       (should (eq (not (null (magit-staged-files))) staged))
+                       (should (equal treemacs-magit--repository directory))
+                       (should (eq window-size-fixed 'width))
+                       (should-not (window-parameter tree 'no-delete-other-windows))
+                       (should (memq #'treemacs-magit--cleanup-buffer kill-buffer-hook))
+                       (dolist (binding '(("s" . treemacs-magit-stage-file-at-point)
+                                          ("c" . treemacs-magit-commit)
+                                          ("r" . treemacs-magit-review-list)
+                                          ("q" . treemacs-magit-quit)
+                                          ([C-mouse-1] . treemacs-magit--mouse-file)
+                                          ([C-down-mouse-1] . treemacs-magit--mouse-file)
+                                          ([S-mouse-1] . treemacs-magit--mouse-file-only)
+                                          ([S-down-mouse-1] . ignore)))
+                         (should (eq (key-binding (car binding)) (cdr binding))))
+                       (should (equal (treemacs-magit-node-path
+                                       (treemacs-button-get (treemacs-current-button) :node))
+                                      file))
+                       (setq position (marker-position (treemacs-current-button)))))
+            (setq event (list 'S-mouse-1 (list tree position '(0 . 0) 0)))
+            (with-selected-window tree
+              (goto-char position)
+              (should (eq (key-binding [S-mouse-1])
+                          #'treemacs-magit--mouse-file-only))
+              (should (eq (key-binding [S-down-mouse-1]) #'ignore)))
+            (cl-letf (((symbol-function 'treemacs-magit--visit-diff)
+                       (lambda (&rest _) (cl-incf diff-visits))))
+              (treemacs-magit--mouse-file-only event)
+              (should (zerop diff-visits))
+              (should (equal (buffer-file-name (window-buffer middle)) file))
+              (should (= (length (window-list nil 'nomini)) columns))
+              (when (= columns 3)
+                (should (eq (window-buffer right) sentinel)))
+              ;; Plain and Control clicks retain their original dispatch.
+              (treemacs-magit--mouse-diff
+               (cons 'mouse-1 (cdr event)))
+              (should (= diff-visits 1))
+              (treemacs-magit--mouse-file
+               (cons 'C-mouse-1 (cdr event)))
+              (should (= diff-visits (if (= columns 3) 2 1)))
+              (should (equal (buffer-file-name (window-buffer right)) file)))))
+      (dolist (buffer (buffer-list))
+        (when (and (not (memq buffer existing-buffers))
+                   (or (eq buffer sentinel)
+                       (equal (buffer-name buffer) treemacs-magit--buffer-name)
+                       (equal (buffer-local-value 'default-directory buffer) directory)))
+          (kill-buffer buffer)))
+      (delete-directory directory t))))
+
+(ert-deftest treemacs-magit-test-shift-click-two-columns ()
+  (treemacs-magit-test--shift-click-file 2))
+
+(ert-deftest treemacs-magit-test-shift-click-three-columns ()
+  (treemacs-magit-test--shift-click-file 3))
+
 (provide 'treemacs-magit-mode-test)
 
 ;;; treemacs-magit-mode-test.el ends here
