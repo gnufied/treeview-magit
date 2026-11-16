@@ -288,9 +288,20 @@ Install diff-review with its `diff-review-open-file` API, then set:
 File diff actions open a native diff-review session beside the existing tree.
 Worktree files remain real, editable file buffers, preserving major modes and
 LSP integrations. Staged files use the real file when it matches the index;
-otherwise they use a revision buffer. Historical comparisons use diff-review's
-worktree/revision selection, so unavailable or differing versions can be
+otherwise they use a revision buffer. Branch, PR, and historical comparisons
+use the working-tree file when both its disk and buffer contents match the reviewed
+version, including when an older review already owns that buffer. Otherwise,
+diff-review's historical worktree/revision selection applies and can be
 read-only. Existing unsaved edits are not overwritten.
+
+Review navigation follows the current file in the tree without moving keyboard
+focus. Added lines use independent `+` margin markers instead of background
+tint; these markers come from the review comparison and do not require git-gutter.
+
+Quitting the tree with `q` also ends its diff-review sessions. Review overlays
+and disposable revision buffers are removed; normal file buffers and unsaved
+edits remain, and saved review comments are retained. Opening a different
+comparison in the same tree ends its previous review automatically.
 
 Native keys use `diff-review-command-prefix` (default `C-c _`): `n`/`p` walk
 hunks, `c` adds a comment, `r` replies, `x` resolves, and `N`/`P` walk comments.
