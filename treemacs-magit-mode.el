@@ -1,4 +1,4 @@
-;;; treemacs-magit-mode.el --- Changed files as a Treemacs tree -*- lexical-binding: t -*-
+;; treemacs-magit-mode.el --- Changed files as a Treemacs tree -*- lexical-binding: t -*-
 
 ;; Author: Hemant Kumar
 ;; Version: 0.1.0
@@ -53,6 +53,7 @@ and opens native review file buffers with inline changes and comment keys."
   :group 'treemacs)
 
 (autoload 'treemacs-magit-diff-review "treemacs-magit-diff-review")
+(autoload 'treemacs-magit-difftastic-file "treemacs-magit-diff-review" nil t)
 
 (defcustom treemacs-magit-fold-min-depth 3
   "Rendered tree depth beyond which directory chains are folded.

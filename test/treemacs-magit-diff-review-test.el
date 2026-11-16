@@ -35,6 +35,35 @@
                                 (should buffer-read-only))
                               (should (eq major-mode 'emacs-lisp-mode))
                               (should diff-review-file-mode)
+                              (when (memq status '(staged unstaged both committed))
+                                (let* ((review diff-review--review)
+                                       (owner diff-review--review)
+                                       (expected
+                                        (with-current-buffer review
+                                          (cond
+                                           ((eq status 'unstaged) nil)
+                                           ((eq status 'staged) diff-review--base)
+                                           (diff-review--tip
+                                            (concat diff-review--base ".." diff-review--tip))
+                                           (t diff-review--base))))
+                                       (source (current-buffer)))
+                                  (save-window-excursion
+                                    (with-current-buffer (treemacs-magit-difftastic-file)
+                                      (should (derived-mode-p 'magit-diff-mode))
+                                      (should buffer-read-only)
+                                      (should (equal magit-buffer-diff-range expected))
+                                      (should (equal magit-buffer-diff-files '("sample.el")))
+                                      (should (equal magit-buffer-diff-typearg
+                                                     (and (eq status 'staged) "--cached")))
+                                      (let ((deadline (+ (float-time) 5)))
+                                        (while (and (< (float-time) deadline)
+                                                    (string-match-p "Rendering difftastic"
+                                                                    (buffer-string)))
+                                          (accept-process-output nil 0.05)))
+                                      (should (string-match-p "@@" (buffer-string)))))
+                                  (should (eq (current-buffer) source))
+                                  (should (eq diff-review--review owner))
+                                  (should diff-review-file-mode)))
                               (should (eq (key-binding (kbd "C-c _ n")) #'diff-review-next-hunk))
                               (should (eq (key-binding (kbd "C-c _ p")) #'diff-review-previous-hunk))
                               (should (eq (key-binding (kbd "C-c _ c")) #'diff-review-comment))
@@ -80,7 +109,8 @@
       (dolist (buffer (buffer-list))
         (when (and (buffer-live-p buffer)
                    (with-current-buffer buffer
-                (or (and buffer-file-name (string-prefix-p directory buffer-file-name))
+                (or (string-prefix-p directory default-directory)
+                    (and buffer-file-name (string-prefix-p directory buffer-file-name))
                     (and (boundp 'diff-review--root) diff-review--root
                          (string-prefix-p directory diff-review--root)))))
           (kill-buffer buffer)))
@@ -245,11 +275,25 @@
                 (should (eq treemacs-magit-test-client 'connected))
                 (should-not diff-review-file-mode)
                 (should-not diff-review--review)
-                (should-not diff-review--overlays)))))
+                (should-not diff-review--overlays)
+                ;; Outside review mode, compare disk to HEAD without saving
+                ;; the unsaved source or reactivating review mode.
+                (save-window-excursion
+                  (with-current-buffer (treemacs-magit-difftastic-file)
+                    (should buffer-read-only)
+                    (should (equal magit-buffer-diff-range "HEAD"))
+                    (should (equal magit-buffer-diff-files '("sample.el")))))
+                (should (buffer-modified-p))
+                (should (string-suffix-p "keep unsaved\n" (buffer-string)))
+                (should (equal (with-temp-buffer
+                                 (insert-file-contents path)
+                                 (buffer-string))
+                               "disk differs\n"))))))
       (dolist (buffer (buffer-list))
         (when (and (buffer-live-p buffer)
                    (with-current-buffer buffer
-                (or (and buffer-file-name (string-prefix-p directory buffer-file-name))
+                (or (string-prefix-p directory default-directory)
+                    (and buffer-file-name (string-prefix-p directory buffer-file-name))
                     (and (boundp 'diff-review--root) diff-review--root
                          (string-prefix-p directory diff-review--root)))))
           (with-current-buffer buffer (set-buffer-modified-p nil))

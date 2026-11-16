@@ -190,5 +190,68 @@ whose disk or unsaved contents differ, and reviews outside this adapter."
         (treemacs-magit--run-in-target
          #'diff-review-open-file review-file file default-directory base head comparison)))))
 
+(defvar magit-difftastic-mode)
+(defvar magit-difftastic-diff-buffers)
+(defvar magit-difftastic-default-rendering)
+(declare-function magit-difftastic-mode "magit-difftastic" (&optional arg))
+
+(defun treemacs-magit--difftastic-file-setup ()
+  "Select Difftastic rendering for this file's Magit diff buffer."
+  (setq-local magit-difftastic-diff-buffers t
+              magit-difftastic-default-rendering 'difftastic))
+
+;;;###autoload
+(defun treemacs-magit-difftastic-file ()
+  "Show the current file's diff in a read-only Magit Difftastic buffer.
+In a diff-review file buffer, use that review's exact base and head, even
+for a branch, PR or historical snapshot.  Staged and unstaged reviews
+use the current index comparison.  Otherwise
+compare the file on disk against HEAD.  Unsaved edits are not saved.
+The separate Magit buffer is locked to this comparison and file; `q'
+returns using Magit's normal window handling.  Enable
+`magit-difftastic-mode' if necessary."
+  (interactive)
+  (let* ((review (and (bound-and-true-p diff-review-file-mode)
+                      (buffer-live-p diff-review--review) diff-review--review))
+         (root (if review (buffer-local-value 'diff-review--root review)
+                 (and buffer-file-name (magit-toplevel))))
+         (file (if review diff-review--file-path
+                 (and root (file-relative-name buffer-file-name root))))
+         (comparison (and review
+                          (gethash "comparison"
+                                   (buffer-local-value 'diff-review--data review))))
+         (range (cond
+                 ((equal comparison "unstaged") nil)
+                 ((equal comparison "staged")
+                  (buffer-local-value 'diff-review--base review))
+                 (review
+                  (with-current-buffer review
+                    (if diff-review--tip
+                        (concat diff-review--base ".." diff-review--tip)
+                      diff-review--base)))
+                 (t "HEAD")))
+         (typearg (and (equal comparison "staged") "--cached")))
+    (unless (and root file)
+      (user-error "Visit a Git file or a diff-review file first"))
+    (unless (require 'magit-difftastic nil t)
+      (user-error "Install magit-difftastic to use this command"))
+    (unless (executable-find "difft")
+      (user-error "Difftastic executable `difft' is not available"))
+    (unless magit-difftastic-mode (magit-difftastic-mode 1))
+    (let* ((default-directory root)
+           (magit-diff-mode-hook (cons #'treemacs-magit--difftastic-file-setup
+                                       magit-diff-mode-hook)))
+      (let ((buffer (magit-diff-setup-buffer
+                     range typearg nil (list file)
+                     (cond (typearg 'staged)
+                           ((null range) 'unstaged)
+                           (t 'committed))
+                     t)))
+        (with-current-buffer buffer
+          (dolist (section (oref magit-root-section children))
+            (when (eq (oref section type) 'file)
+              (magit-section-show section))))
+        buffer))))
+
 (provide 'treemacs-magit-diff-review)
 ;;; treemacs-magit-diff-review.el ends here

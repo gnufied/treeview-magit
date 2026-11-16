@@ -303,6 +303,16 @@ and disposable revision buffers are removed; normal file buffers and unsaved
 edits remain, and saved review comments are retained. Opening a different
 comparison in the same tree ends its previous review automatically.
 
+To open the current file in the older read-only diff view, run
+`M-x treemacs-magit-difftastic-file`. It uses the active review's exact
+comparison for branch/PR and historical reviews, or the current index
+comparison for staged/unstaged reviews; outside review mode it
+compares the file on disk against HEAD. The separate Magit buffer is limited
+to that file, and `q` returns through Magit's normal window handling. This
+requires `magit-difftastic` and the `difft` executable and enables
+`magit-difftastic-mode` if needed. Unsaved source edits are not saved.
+`treemacs-magit-file-display` can remain set to `diff-review`.
+
 Native keys use `diff-review-command-prefix` (default `C-c _`): `n`/`p` walk
 hunks, `c` adds a comment, `r` replies, `x` resolves, and `N`/`P` walk comments.
 The other native review commands remain available. The diff-review sidebar
