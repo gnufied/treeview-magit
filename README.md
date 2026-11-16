@@ -276,3 +276,33 @@ straight.el build directory.
 ## License
 
 See the source file for license information.
+
+### Inline file diffs
+
+Install diff-review with its `diff-review-open-file` API, then set:
+
+```elisp
+(setq treemacs-magit-file-display 'diff-review)
+```
+
+File diff actions open a native diff-review session beside the existing tree.
+Worktree files remain real, editable file buffers, preserving major modes and
+LSP integrations. Staged files use the real file when it matches the index;
+otherwise they use a revision buffer. Historical comparisons use diff-review's
+worktree/revision selection, so unavailable or differing versions can be
+read-only. Existing unsaved edits are not overwritten.
+
+Native keys use `diff-review-command-prefix` (default `C-c _`): `n`/`p` walk
+hunks, `c` adds a comment, `r` replies, `x` resolves, and `N`/`P` walk comments.
+The other native review commands remain available. The diff-review sidebar
+starts hidden; treeview remains the navigator. Reviews and comments persist
+under `treeview-reviews/` in the shared Git directory, separated by worktree,
+branch, and comparison. These are diff-review threads, separate from
+treeview-magit's branch-local comments.
+
+Reopen a file or use diff-review's refresh command to refresh the comparison.
+File-only actions still open ordinary files. Root actions still open Magit.
+Set the option to `magit` (the default) to restore the usual diff display.
+
+Run the adapter's disposable-repository/window regression with
+`make test-diff-review DIFF_REVIEW_DIR=/path/to/diff-review`.

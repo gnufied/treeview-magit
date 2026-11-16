@@ -45,6 +45,15 @@ that repository, commit, and pull-request roots align with the rest of the
 tree in both graphical and terminal Emacs."
   :group 'treemacs)
 
+(defcustom treemacs-magit-file-display 'magit
+  "Display used when opening a file diff from the tree.
+The `diff-review' backend requires diff-review's full-session API
+and opens native review file buffers with inline changes and comment keys."
+  :type '(choice (const magit) (const diff-review))
+  :group 'treemacs)
+
+(autoload 'treemacs-magit-diff-review "treemacs-magit-diff-review")
+
 (defcustom treemacs-magit-fold-min-depth 3
   "Rendered tree depth beyond which directory chains are folded.
 
@@ -608,31 +617,33 @@ window immediately beside the tree."
 
 (defun treemacs-magit--visit-diff (data root file status)
   "Display the diff for DATA with ROOT, FILE, and STATUS."
-  (pcase status
-    ('committed
-     (if (treemacs-magit-node-range root)
+  (if (eq treemacs-magit-file-display 'diff-review)
+      (treemacs-magit-diff-review data root file status)
+    (pcase status
+      ('committed
+       (if (treemacs-magit-node-range root)
+           (treemacs-magit--run-in-target
+            #'magit-diff-range (treemacs-magit-node-range root) nil (list file))
          (treemacs-magit--run-in-target
-          #'magit-diff-range (treemacs-magit-node-range root) nil (list file))
+          #'magit-show-commit
+          (treemacs-magit-node-revision root)
+          nil (list file))))
+      ('staged
        (treemacs-magit--run-in-target
-        #'magit-show-commit
-        (treemacs-magit-node-revision root)
-        nil (list file))))
-    ('staged
-     (treemacs-magit--run-in-target
-      #'magit-diff-staged nil nil (list file)))
-    ('unstaged
-     (treemacs-magit--run-in-target
-      #'magit-diff-unstaged nil (list file)))
-    ('both
-     (treemacs-magit--run-in-target
-      #'magit-diff-working-tree nil nil (list file)))
-    ('untracked
-     (treemacs-magit--run-in-target
-      #'magit-diff-paths "/dev/null"
-      (treemacs-magit-node-path data)))
-    (_
-     (treemacs-magit--run-in-target
-      #'magit-diff-working-tree nil nil (list file)))))
+        #'magit-diff-staged nil nil (list file)))
+      ('unstaged
+       (treemacs-magit--run-in-target
+        #'magit-diff-unstaged nil (list file)))
+      ('both
+       (treemacs-magit--run-in-target
+        #'magit-diff-working-tree nil nil (list file)))
+      ('untracked
+       (treemacs-magit--run-in-target
+        #'magit-diff-paths "/dev/null"
+        (treemacs-magit-node-path data)))
+      (_
+       (treemacs-magit--run-in-target
+        #'magit-diff-working-tree nil nil (list file))))))
 
 (defun treemacs-magit--visit-file-node (data root file status)
   "Visit the file for DATA with ROOT, FILE, and STATUS."
