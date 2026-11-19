@@ -1,6 +1,8 @@
 ;;; treemacs-magit-diff-review-test.el --- Adapter tests -*- lexical-binding: t -*-
 (require 'ert)
 (require 'treemacs-magit-diff-review)
+;; Review comments may be loaded after the inline adapter in a live session.
+(require 'treemacs-magit-review)
 
 (defvar-local treemacs-magit-test-client nil)
 
@@ -73,13 +75,13 @@
                                                     (or (overlay-get o 'before-string) "")))
                                        diff-review--overlays))))
                           (setq default-directory (file-name-as-directory directory))))
-              (treemacs-magit--review-git "init" "-q")
+              (treemacs-magit--diff-review-git "init" "-q")
               (write-text "old\n")
-              (treemacs-magit--review-git "add" ".")
-              (treemacs-magit--review-git "-c" "user.name=Test" "-c" "user.email=test@example.com"
+              (treemacs-magit--diff-review-git "add" ".")
+              (treemacs-magit--diff-review-git "-c" "user.name=Test" "-c" "user.email=test@example.com"
                                          "commit" "-qm" "Initial")
               (write-text "staged\n")
-              (treemacs-magit--review-git "add" ".")
+              (treemacs-magit--diff-review-git "add" ".")
               (write-text "worktree\n")
               (show 'staged "staged\n" "old")
               (show 'unstaged "worktree\n" "staged")
@@ -95,7 +97,7 @@
                   (with-current-buffer review
                     (should (= (length diff-review--comments) 1))
                     (should (file-exists-p buffer-file-name)))))
-              (treemacs-magit--review-git "-c" "user.name=Test" "-c" "user.email=test@example.com"
+              (treemacs-magit--diff-review-git "-c" "user.name=Test" "-c" "user.email=test@example.com"
                                          "commit" "-qm" "Change")
               (setf (treemacs-magit-node-revision root) (magit-rev-verify "HEAD"))
               (show 'committed "staged\n" "old")
@@ -104,7 +106,7 @@
               (delete-file file)
               (show 'unstaged "staged\n" "")
               (write-text "untracked\n")
-              (treemacs-magit--review-git "rm" "--cached" "sample.el")
+              (treemacs-magit--diff-review-git "rm" "--cached" "sample.el")
               (show 'untracked "untracked\n" ""))))
       (dolist (buffer (buffer-list))
         (when (and (buffer-live-p buffer)
@@ -183,17 +185,17 @@
          source base first second)
     (unwind-protect
         (save-window-excursion
-          (treemacs-magit--review-git "init" "-q")
+          (treemacs-magit--diff-review-git "init" "-q")
           (with-temp-file path (insert "old\n"))
-          (treemacs-magit--review-git "add" ".")
-          (treemacs-magit--review-git "-c" "user.name=Test" "-c" "user.email=t@example.com"
+          (treemacs-magit--diff-review-git "add" ".")
+          (treemacs-magit--diff-review-git "-c" "user.name=Test" "-c" "user.email=t@example.com"
                                      "commit" "-qm" "Base")
-          (setq base (string-trim (treemacs-magit--review-git "rev-parse" "HEAD")))
+          (setq base (string-trim (treemacs-magit--diff-review-git "rev-parse" "HEAD")))
           (with-temp-file path (insert "new\n"))
-          (treemacs-magit--review-git "add" ".")
-          (treemacs-magit--review-git "-c" "user.name=Test" "-c" "user.email=t@example.com"
+          (treemacs-magit--diff-review-git "add" ".")
+          (treemacs-magit--diff-review-git "-c" "user.name=Test" "-c" "user.email=t@example.com"
                                      "commit" "-qm" "Change")
-          (setq first (string-trim (treemacs-magit--review-git "rev-parse" "HEAD")))
+          (setq first (string-trim (treemacs-magit--diff-review-git "rev-parse" "HEAD")))
           (diff-review-open-file (expand-file-name ".git/first.json") "sample.el"
                                  default-directory base first "range")
           (set-buffer (window-buffer))
@@ -204,9 +206,9 @@
           ;; state must survive transferring review ownership.
           (setq-local treemacs-magit-test-client 'connected)
           (setq default-directory (file-name-as-directory directory))
-          (treemacs-magit--review-git "-c" "user.name=Test" "-c" "user.email=t@example.com"
+          (treemacs-magit--diff-review-git "-c" "user.name=Test" "-c" "user.email=t@example.com"
                                      "commit" "--allow-empty" "-qm" "New tip")
-          (setq second (string-trim (treemacs-magit--review-git "rev-parse" "HEAD")))
+          (setq second (string-trim (treemacs-magit--diff-review-git "rev-parse" "HEAD")))
           (let ((fixed (symbol-function 'treemacs-magit--review-head-buffer))
                 reproduced)
             (cl-letf (((symbol-function 'treemacs-magit--review-head-buffer)

@@ -105,7 +105,7 @@ This also handles a new comparison with no changed files to open."
 (advice-add 'diff-review--decorate :around #'treemacs-magit--review-decorate)
 (add-hook 'post-command-hook #'treemacs-magit--review-follow)
 
-(defun treemacs-magit--review-git (&rest args)
+(defun treemacs-magit--diff-review-git (&rest args)
   "Return Git output for ARGS, preserving trailing newlines."
   (with-temp-buffer
     (let ((code (apply #'process-file "git" nil t nil args)))
@@ -125,7 +125,7 @@ whose disk or unsaved contents differ, and reviews outside this adapter."
            (path (expand-file-name (plist-get file :path) default-directory))
            (existing (find-buffer-visiting path))
            (contents (and (file-regular-p path) (not (file-symlink-p path))
-                          (treemacs-magit--review-git
+                          (treemacs-magit--diff-review-git
                            "show" (concat diff-review--tip ":" (plist-get file :path)))))
            (matches (and contents
                          (equal contents (with-temp-buffer
