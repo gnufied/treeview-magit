@@ -6,6 +6,49 @@
 
 (defvar-local treemacs-magit-test-client nil)
 
+(ert-deftest treemacs-magit-branch-visit-after-commit ()
+  (let* ((directory (make-temp-file "tree-moving-branch-" t))
+         (default-directory (file-name-as-directory directory))
+         (file (expand-file-name "sample.el" directory))
+         (treemacs-magit-file-display 'diff-review)
+         (treemacs-magit-min-content-window-width 1000)
+         (treemacs-magit--buffer-name "*Moving branch test*"))
+    (unwind-protect
+        (save-window-excursion
+          (delete-other-windows)
+          (cl-labels ((commit (text)
+                        (with-temp-file file (insert text))
+                        (treemacs-magit--diff-review-git "add" ".")
+                        (treemacs-magit--diff-review-git
+                         "-c" "user.name=Test" "-c" "user.email=test@example.com"
+                         "commit" "-qm" text)))
+            (treemacs-magit--diff-review-git "init" "-q" "-b" "main")
+            (commit "base")
+            (treemacs-magit--diff-review-git "switch" "-qc" "feature")
+            (commit "first")
+            (treemacs-magit-branch "main")
+            (let ((default-directory (file-name-as-directory directory)))
+              (commit "second"))
+            (treemacs-magit--visit-current)
+            (let ((expected (with-temp-buffer
+                              (setq default-directory (file-name-as-directory directory))
+                              (magit-rev-verify "HEAD"))))
+              (should (equal expected treemacs-magit--revision))
+              (with-current-buffer (find-buffer-visiting file)
+                (should diff-review-file-mode)
+                (should (equal (buffer-string) "second"))
+                (should (equal expected (buffer-local-value 'diff-review--tip
+                                                             diff-review--review)))))
+            (let ((default-directory (file-name-as-directory directory)))
+              (treemacs-magit--diff-review-git "branch" "-f" "main" "HEAD"))
+            (should-error (treemacs-magit--visit-current) :type 'user-error)
+            (should-not (treemacs-magit-node-children treemacs-magit--rendered-root))))
+      (when-let* ((tree (get-buffer treemacs-magit--buffer-name)))
+        (kill-buffer tree))
+      (when-let* ((buffer (find-buffer-visiting file)))
+        (kill-buffer buffer))
+      (delete-directory directory t))))
+
 (ert-deftest treemacs-magit-inline-snapshots ()
   (let* ((directory (make-temp-file "tree-inline-" t))
          (default-directory (file-name-as-directory directory))

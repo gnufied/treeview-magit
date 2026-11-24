@@ -119,6 +119,7 @@ the tree can be divided into two windows at least this wide."
   :group 'treemacs)
 
 (defvar treemacs-magit--contexts nil)
+(defvar treemacs-magit--defer-initial-file nil)
 (defvar-local treemacs-magit--repository nil)
 (defvar-local treemacs-magit--revision nil)
 (defvar-local treemacs-magit--range nil)
@@ -583,6 +584,43 @@ branches."
 With VIEW-FILE, visit file contents, also showing the diff when a separate
 file window exists.  If VIEW-FILE is `only', show only file contents in the
 window immediately beside the tree."
+  (treemacs-magit--update-branch-at-point)
+  (treemacs-magit--visit-selected-node view-file))
+
+(defun treemacs-magit--update-branch-at-point ()
+  "Rebuild a moved branch comparison and relocate the selected node."
+  (let* ((context (cdr (assq (current-buffer) treemacs-magit--contexts)))
+         (branch (plist-get context :base-branch)))
+    (when branch
+      (let* ((default-directory (plist-get context :repository))
+             (head (magit-rev-verify "HEAD"))
+             (base (magit-rev-verify branch))
+             (current (or (magit-get-current-branch)
+                          (and head (substring head 0 (min 8 (length head)))))))
+        (unless (and base head)
+          (user-error "Cannot resolve HEAD and %s for this comparison" branch))
+        (unless (and (equal (format "%s...%s" base head) (plist-get context :range))
+                     (equal (format "%s vs %s" current branch)
+                            (plist-get context :range-label)))
+          (let* ((button (treemacs-current-button))
+                 (old (and button (treemacs-button-get button :node)))
+                 (wanted (and old (treemacs-magit-node-path old)))
+                 (treemacs-magit--defer-initial-file t))
+            (treemacs-magit--display-range
+             default-directory head (format "%s...%s" base head)
+             nil (format "%s vs %s" current branch) branch)
+            (let ((pos (point-min)) found)
+              (while (and (< pos (point-max)) (not found))
+                (let ((node (get-text-property pos :node)))
+                  (when (and node (equal wanted (treemacs-magit-node-path node)))
+                    (setq found pos)))
+                (setq pos (next-single-property-change pos :node nil (point-max))))
+              (unless found
+                (user-error "Comparison updated; selected path is no longer listed"))
+              (goto-char found))))))))
+
+(defun treemacs-magit--visit-selected-node (view-file)
+  "Open the selected node according to VIEW-FILE."
   (let* ((node (treemacs-current-button))
          (data (and node (treemacs-button-get node :node)))
          (root (and node (treemacs-magit--root-for-button node))))
@@ -979,7 +1017,7 @@ out."
      "prc" (number-to-string pull-request))))
 
 (defun treemacs-magit--display-range
-    (repository revision range &optional pull-request range-label)
+    (repository revision range &optional pull-request range-label base-branch)
   "Display RANGE in REPOSITORY as a Treemacs Magit tree.
 
 REVISION is the range's head commit.  PULL-REQUEST identifies a GitHub pull
@@ -996,7 +1034,8 @@ request; otherwise RANGE-LABEL describes a branch comparison."
                                    :revision revision
                                    :range range
                                    :pull-request pull-request
-                                   :range-label range-label))
+                                   :range-label range-label
+                                   :base-branch base-branch))
                 (assq-delete-all buffer treemacs-magit--contexts)))
     (treemacs-initialize treemacs-magit-root
       :with-expand-depth t)
@@ -1009,7 +1048,8 @@ request; otherwise RANGE-LABEL describes a branch comparison."
     (set-window-parameter (selected-window) 'no-delete-other-windows nil)
     (treemacs-magit--bind-buffer-keys)
     (if (treemacs-magit--first-file-node treemacs-magit--rendered-root)
-        (treemacs-magit--display-initial-file)
+        (unless treemacs-magit--defer-initial-file
+          (treemacs-magit--display-initial-file))
       (when-let* ((position
                    (text-property-any (point-min) (point-max)
                                       :node treemacs-magit--rendered-root))
@@ -1044,7 +1084,7 @@ either branch."
         (user-error "The current repository has no HEAD commit"))
       (treemacs-magit--display-range
        repository head (format "%s...%s" base head)
-       nil (format "%s vs %s" current branch)))))
+       nil (format "%s vs %s" current branch) branch))))
 
 ;;;###autoload
 (defun treemacs-magit-pr (&optional pull-request)

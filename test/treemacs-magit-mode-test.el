@@ -148,7 +148,7 @@
       (treemacs-magit-branch "main"))
     (should (equal display-arguments
                    '("/repo/" "head-oid" "base-oid...head-oid"
-                     nil "feature vs main")))))
+                     nil "feature vs main" "main")))))
 
 (ert-deftest treemacs-magit-test-branch-command-rejects-missing-branch ()
   (cl-letf (((symbol-function 'magit-toplevel) (lambda () "/tmp/"))

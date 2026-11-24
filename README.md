@@ -75,7 +75,7 @@ Run `M-x treemacs-magit` from a buffer inside a Git repository to open a Treemac
 
 When point is on a commit in a `magit-revision-mode` or `magit-log-mode` buffer, `M-x treemacs-magit` shows the files touched by that commit instead.
 
-Run `M-x treemacs-magit-branch` and choose a local or remote branch to compare it with the currently checked-out branch. The command uses Git's three-dot range semantics, showing changes on the current branch since the branches' merge base. It does not check out or modify either branch. Selecting the root shows the complete range diff, and selecting a file shows its range diff.
+Run `M-x treemacs-magit-branch` and choose a local or remote branch to compare it with the currently checked-out branch. The command uses Git's three-dot range semantics, showing changes on the current branch since the branches' merge base. It does not check out or modify either branch. Opening a node rechecks HEAD and the selected base branch locally. If either moved, the tree rebuilds and opens the selected path only if it is still listed. Selecting the root shows the complete range diff, and selecting a file shows its range diff.
 
 Run `M-x treemacs-magit-pr` from a Git repository to show the pull request associated with the current branch. GitHub CLI resolves that association from the branch, so another locally stored PR number is unnecessary. If the exact PR head is already checked out, checkout is skipped.
 
