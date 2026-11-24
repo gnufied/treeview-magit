@@ -286,6 +286,12 @@ Install diff-review with its `diff-review-open-file` API, then set:
 ```
 
 File diff actions open a native diff-review session beside the existing tree.
+The file header starts with clickable **Previous**, **Next**, **Difftastic**,
+and **Hide removed** or **Show removed** buttons. Navigation walks hunks across
+files. Difftastic opens the current file's Magit Difftastic comparison. The
+removed-lines button runs the same toggle as `C-c _ d`. LSP breadcrumbs follow
+the review header. Terminal clicks require `xterm-mouse-mode`.
+
 Worktree files remain real, editable file buffers, preserving major modes and
 LSP integrations. Staged files use the real file when it matches the index;
 otherwise they use a revision buffer. Branch, PR, and historical comparisons

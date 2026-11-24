@@ -45,6 +45,74 @@ This also handles a new comparison with no changed files to open."
       (and (buffer-live-p diff-review--review)
            (buffer-local-value 'treemacs-magit--review-tree diff-review--review))))
 
+(defun treemacs-magit--review-header-button (label command)
+  "Return a clickable header LABEL invoking COMMAND in its file window."
+  (let ((map (make-sparse-keymap)))
+    (define-key map [header-line down-mouse-1] #'ignore)
+    (define-key map [header-line mouse-1]
+      (lambda (event)
+        (interactive "e")
+        (select-window (posn-window (event-start event)))
+        (call-interactively command)
+        (set-buffer (window-buffer (selected-window)))))
+    (propertize (format "[%s]" label) 'local-map map
+                'face 'mode-line-emphasis 'mouse-face 'highlight
+                'help-echo (symbol-name command))))
+
+(defconst treemacs-magit--review-toolbar
+  (mapconcat (lambda (button) (apply #'treemacs-magit--review-header-button button))
+             '(("Previous" diff-review-previous-hunk)
+               ("Next" diff-review-next-hunk)
+               ("Difftastic" treemacs-magit-difftastic-file)) " ")
+  "File navigation and Difftastic controls for Treeview reviews.")
+
+(defconst treemacs-magit--review-removed-buttons
+  (cons (treemacs-magit--review-header-button "Hide removed" #'diff-review-toggle-inline-removed)
+        (treemacs-magit--review-header-button "Show removed" #'diff-review-toggle-inline-removed))
+  "Buttons for toggling inline removed lines in a review.")
+
+(defun treemacs-magit--review-file-header (original)
+  "Render Treeview's controls alongside the native status from ORIGINAL."
+  (if (buffer-live-p (treemacs-magit--review-tree-buffer))
+      (let ((diff-review-file-header-keys nil))
+        (concat " " treemacs-magit--review-toolbar " "
+                (if (diff-review--in-review diff-review--inline-removed)
+                    (car treemacs-magit--review-removed-buttons)
+                  (cdr treemacs-magit--review-removed-buttons))
+                "  " (funcall original)))
+    (funcall original)))
+
+(advice-add 'diff-review--file-header :around #'treemacs-magit--review-file-header)
+
+(defconst treemacs-magit--lsp-breadcrumb
+  '(t (:eval (window-parameter nil 'lsp-headerline--string)))
+  "The header element installed by `lsp-headerline-breadcrumb-mode'.")
+
+(defun treemacs-magit--review-set-header (original variable value)
+  "Set VARIABLE to VALUE through ORIGINAL, composing Treeview review headers."
+  (when (and (eq variable 'header-line-format)
+             (buffer-live-p (treemacs-magit--review-tree-buffer)))
+    ;; Older diff-review releases supply a bare evaluation form.
+    (when (eq (car-safe value) :eval)
+      (setq value (list value)))
+    (when (bound-and-true-p lsp-headerline-breadcrumb-mode)
+      (setq value (append value (list treemacs-magit--lsp-breadcrumb)))))
+  (funcall original variable value))
+
+(advice-add 'diff-review--set :around #'treemacs-magit--review-set-header)
+
+(defun treemacs-magit--review-order-lsp-header (&rest _)
+  "Keep the review header first when LSP prepends its breadcrumb."
+  (when (and diff-review-file-mode
+             (buffer-live-p (treemacs-magit--review-tree-buffer))
+             (assq 'header-line-format diff-review--saved)
+             (equal (car-safe header-line-format) treemacs-magit--lsp-breadcrumb))
+    (setq header-line-format
+          (append (cdr header-line-format) (list treemacs-magit--lsp-breadcrumb)))))
+
+(with-eval-after-load 'lsp-headerline
+  (advice-add 'lsp-headerline-breadcrumb-mode :after #'treemacs-magit--review-order-lsp-header))
+
 (defun treemacs-magit--review-follow ()
   "Follow review navigation without selecting the tree window."
   (when (and (bound-and-true-p diff-review-file-mode)

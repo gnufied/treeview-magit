@@ -5,6 +5,7 @@
 (require 'treemacs-magit-review)
 
 (defvar-local treemacs-magit-test-client nil)
+(defvar lsp-headerline-breadcrumb-mode)
 
 (ert-deftest treemacs-magit-branch-visit-after-commit ()
   (let* ((directory (make-temp-file "tree-moving-branch-" t))
@@ -80,6 +81,22 @@
                                 (should buffer-read-only))
                               (should (eq major-mode 'emacs-lisp-mode))
                               (should diff-review-file-mode)
+                              (let ((header (diff-review--file-header)))
+                                (dolist (entry '(("[Previous]" . diff-review-previous-hunk)
+                                                 ("[Next]" . diff-review-next-hunk)
+                                                 ("[Difftastic]" . treemacs-magit-difftastic-file)))
+                                  (let* ((position (string-search (car entry) header))
+                                         (map (get-text-property position 'local-map header))
+                                         invoked)
+                                    (should (eq (lookup-key map [header-line down-mouse-1]) #'ignore))
+                                    (cl-letf (((symbol-function (cdr entry))
+                                               (lambda () (interactive) (setq invoked t))))
+                                      (let ((keys (vector 'header-line
+                                                          `(mouse-1 (,target header-line (0 . 0) 0)))))
+                                        (call-interactively (lookup-key map [header-line mouse-1])
+                                                            nil keys)))
+                                    (should invoked)))
+                                (should-not (string-search "[Viewed]" header)))
                               (when (memq status '(staged unstaged both committed))
                                 (let* ((review diff-review--review)
                                        (owner diff-review--review)
@@ -128,7 +145,37 @@
               (write-text "worktree\n")
               (show 'staged "staged\n" "old")
               (show 'unstaged "worktree\n" "staged")
+              ;; Re-enter a plain file after its review mode was removed.
+              (with-current-buffer (window-buffer target)
+                (diff-review-file-mode -1)
+                (should-not header-line-format))
+              (show 'unstaged "worktree\n" "staged")
               (show 'both "worktree\n" "old")
+              (with-selected-window target
+                (let ((lsp-headerline-breadcrumb-mode t)
+                      (breadcrumb '(t (:eval (window-parameter nil 'lsp-headerline--string)))))
+                  ;; An existing LSP connection survives review re-entry.
+                  (diff-review-file-mode 1)
+                  (should (equal (cadr header-line-format) breadcrumb))
+                  (let ((review-element (car header-line-format)))
+                    (should (eq (car review-element) :eval))
+                    ;; LSP can connect after the file has entered the review.
+                    (setq header-line-format (list breadcrumb review-element))
+                    (treemacs-magit--review-order-lsp-header)
+                    (should (equal header-line-format (list review-element breadcrumb))))
+                  (dolist (label '("[Hide removed]" "[Show removed]"))
+                    (let* ((header (diff-review--file-header))
+                           (position (string-search label header))
+                           (map (get-text-property position 'local-map header))
+                           (keys (vector 'header-line
+                                         `(mouse-1 (,target header-line (0 . 0) 0)))))
+                      (call-interactively (lookup-key map [header-line mouse-1]) nil keys)
+                      (should (eq (and (seq-some
+                                        (lambda (overlay)
+                                          (string-search "old" (or (overlay-get overlay 'before-string) "")))
+                                        diff-review--overlays)
+                                       t)
+                                  (equal label "[Show removed]")))))))
               (with-selected-window target
                 (cl-letf (((symbol-function 'diff-review--read-body) (lambda (&rest _) "Please revise")))
                   (call-interactively (key-binding (kbd "C-c _ c"))))
