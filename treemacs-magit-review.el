@@ -12,6 +12,7 @@
 
 ;;; Code:
 
+(require 'button)
 (require 'cl-lib)
 (require 'json)
 (require 'seq)
@@ -667,7 +668,8 @@ With prefix NEW, add another comment even if one already occupies this line."
 
 (define-derived-mode treemacs-magit-review-list-mode special-mode "Review Comments"
   "All review comments for this checkout's current branch.
-RET visits, n/p move, e edits, d deletes, and g reloads the current branch."
+RET visits a comment's location or opens the JSON link in the header.
+n/p move, e edits, d deletes, and g reloads the current branch."
   (setq-local revert-buffer-function (lambda (&rest _) (treemacs-magit--review-refresh-list))))
 
 (defun treemacs-magit--review-sort-key (comment)
@@ -696,7 +698,13 @@ RET visits, n/p move, e edits, d deletes, and g reloads the current branch."
                         'face 'bold))
     (when data
       (insert (format "Created: %s | Original HEAD: %s\n"
-                      (alist-get 'created_at data) (or (alist-get 'initial_head data) "unborn"))))
+                      (alist-get 'created_at data) (or (alist-get 'initial_head data) "unborn")))
+      (let ((file (treemacs-magit--review-context-file context)))
+        (insert "JSON: ")
+        (insert-text-button file
+                            'follow-link t
+                            'action (lambda (_) (find-file-existing file)))
+        (insert "\n")))
     (insert "\nRET visit | n/p move | e edit | d delete | g reload\n\n")
     (unless comments (insert "No review comments for this branch\n"))
     (dolist (comment comments)

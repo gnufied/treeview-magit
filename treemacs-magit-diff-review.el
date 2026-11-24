@@ -113,6 +113,12 @@ This also handles a new comparison with no changed files to open."
 (with-eval-after-load 'lsp-headerline
   (advice-add 'lsp-headerline-breadcrumb-mode :after #'treemacs-magit--review-order-lsp-header))
 
+(defun treemacs-magit--review-select-tree-node (tree path)
+  "Select PATH in TREE without moving keyboard focus."
+  (when-let* ((window (get-buffer-window tree)))
+    (with-selected-window window
+      (treemacs-goto-extension-node path))))
+
 (defun treemacs-magit--review-follow ()
   "Follow review navigation without selecting the tree window."
   (when (and (bound-and-true-p diff-review-file-mode)
@@ -130,10 +136,74 @@ This also handles a new comparison with no changed files to open."
                   (setq found (treemacs-button-get position :path))))
               (setq position (next-single-property-change position :node nil (point-max))))
             (when found
-              (save-selected-window
-                (when-let* ((window (get-buffer-window tree)))
-                  (with-selected-window window
-                    (treemacs-goto-extension-node found)))))))))))
+              (treemacs-magit--review-select-tree-node tree found))))))))
+
+(defun treemacs-magit--review-tree-file-paths (node parent)
+  "Return the extension paths of files below NODE in tree order.
+PARENT is the extension path leading to NODE's parent."
+  (let ((path (append parent (list (treemacs-magit-node-key node)))))
+    (if-let* ((children (treemacs-magit-node-children node)))
+        (cl-mapcan (lambda (child)
+                     (treemacs-magit--review-tree-file-paths child path))
+                   children)
+      (when (and (treemacs-magit-node-status node)
+                 (not (treemacs-magit-node-collapsed node)))
+        (list path)))))
+
+(defun treemacs-magit--review-step-file (tree forward)
+  "Move to the adjacent review file in TREE, down if FORWARD is non-nil.
+Return non-nil if the current file is listed in TREE."
+  (let* ((file diff-review--file-path)
+         (paths (with-current-buffer tree
+                  (when treemacs-magit--rendered-root
+                    (treemacs-magit--review-tree-file-paths
+                     treemacs-magit--rendered-root '(treemacs-magit)))))
+         (remaining (seq-drop-while
+                     (lambda (path) (not (equal (car (last path)) file)))
+                     (if forward paths (nreverse paths)))))
+    (when remaining
+      (let ((destination
+             (diff-review--in-review
+               (cl-loop for path in (cdr remaining)
+                        for index = (diff-review--file-index (car (last path)))
+                        when index return (cons index path)))))
+        (if destination
+            (let ((buffer (diff-review--in-review
+                            (diff-review--open (car destination)))))
+              (set-buffer buffer)
+              (when (and (not forward) diff-review--hunks)
+                (diff-review--goto-hunk (car (last diff-review--hunks))))
+              (treemacs-magit--review-select-tree-node tree (cdr destination)))
+          (message "%s hunk of the %s file in this comparison"
+                   (if forward "Last" "First") (if forward "last" "first"))))
+      t)))
+
+(defun treemacs-magit--review-walk-hunks (original forward)
+  "Run ORIGINAL within a file and use tree order when crossing files.
+FORWARD is non-nil for next-hunk navigation."
+  (let ((tree (treemacs-magit--review-tree-buffer))
+        (line (line-number-at-pos))
+        (first (car diff-review--hunks)))
+    (unless (and (buffer-live-p tree)
+                 (if forward
+                     (not (seq-some (lambda (hunk) (> (diff-review--hunk-line hunk) line))
+                                    diff-review--hunks))
+                   (or (null first)
+                       (< line (+ (diff-review--hunk-line first)
+                                  (max 1 (plist-get first :count))))))
+                 (treemacs-magit--review-step-file tree forward))
+      (funcall original))))
+
+(defun treemacs-magit--review-next-hunk (original)
+  "Run ORIGINAL with Treeview's forward file order."
+  (treemacs-magit--review-walk-hunks original t))
+
+(defun treemacs-magit--review-previous-hunk (original)
+  "Run ORIGINAL with Treeview's backward file order."
+  (treemacs-magit--review-walk-hunks original nil))
+
+(advice-add 'diff-review-next-hunk :around #'treemacs-magit--review-next-hunk)
+(advice-add 'diff-review-previous-hunk :around #'treemacs-magit--review-previous-hunk)
 
 (defun treemacs-magit--review-decorate (original &rest arguments)
   "Render tree-owned reviews with independent margin markers."

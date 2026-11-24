@@ -146,6 +146,8 @@ Run **`M-x treemacs-magit-review-list`** from anywhere in the project, or press 
 in the tree, to read all comments for the current branch. The list works after an
 Emacs restart without enabling markers first. It groups full comment text by
 relative file path, including comments on unchanged or missing files.
+The header links to the saved review JSON. Click the path or press `RET` on it
+to open the file.
 
 - `RET`: visit the code after verifying its location; show the saved snippet and
   an explanation if the location is missing, outdated, or ambiguous.
@@ -287,9 +289,12 @@ Install diff-review with its `diff-review-open-file` API, then set:
 
 File diff actions open a native diff-review session beside the existing tree.
 The file header starts with clickable **Previous**, **Next**, **Difftastic**,
-and **Hide removed** or **Show removed** buttons. Navigation walks hunks across
-files. Difftastic opens the current file's Magit Difftastic comparison. The
-removed-lines button runs the same toggle as `C-c _ d`. LSP breadcrumbs follow
+and **Hide removed** or **Show removed** buttons. At the end of a file, **Next**
+opens the first hunk of the next file down in Treeview. At the first hunk,
+**Previous** opens the last hunk of the previous file up. Both follow the
+active comparison and select the destination in Treeview. Difftastic opens
+the current file's Magit Difftastic comparison. The removed-lines button
+runs the same toggle as `C-c _ d`. LSP breadcrumbs follow
 the review header. Terminal clicks require `xterm-mouse-mode`.
 
 Worktree files remain real, editable file buffers, preserving major modes and

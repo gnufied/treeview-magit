@@ -237,6 +237,95 @@
         (kill-buffer tree)
         (kill-buffer review)))))
 
+(ert-deftest treemacs-magit-review-hunks-follow-tree-order ()
+  (let* ((directory (file-name-as-directory (make-temp-file "tree-review-order-" t)))
+         (default-directory directory)
+         (existing-buffers (buffer-list))
+         (treemacs-magit--buffer-name " *Tree review order test*")
+         (treemacs-magit-file-display 'diff-review)
+         (treemacs-magit-min-content-window-width 1000)
+         (files '("z.txt" "nested/deep/m.txt" "a.txt"))
+         (context (mapconcat (lambda (n) (format "context %d\n" n))
+                             (number-sequence 1 10)))
+         (base (concat "old\n" context "old\n"))
+         (changed (concat "new\nanother new line\n" context "new\n")))
+    (unwind-protect
+        (save-window-excursion
+          (delete-other-windows)
+          (treemacs-magit--diff-review-git "init" "-q")
+          (dolist (file (cons "staged.txt" files))
+            (make-directory (file-name-directory (expand-file-name file)) t)
+            (with-temp-file file (insert base)))
+          (treemacs-magit--diff-review-git "add" ".")
+          (treemacs-magit--diff-review-git
+           "-c" "user.name=Test" "-c" "user.email=test@example.com"
+           "-c" "core.hooksPath=/dev/null" "commit" "-qm" "Base")
+          (dolist (file (cons "staged.txt" files))
+            (with-temp-file file (insert changed)))
+          (treemacs-magit--diff-review-git "add" "staged.txt")
+          ;; The dirty tree starts at z.txt and includes a staged-only file
+          ;; between z.txt and the nested directory.
+          (treemacs-magit)
+          (let ((tree (selected-window))
+                (target (treemacs-magit--target-window)))
+            (with-selected-window tree
+              (let ((directory-node
+                     (seq-find #'treemacs-magit-node-children
+                               (treemacs-magit-node-children
+                                treemacs-magit--rendered-root))))
+                (goto-char (text-property-any (point-min) (point-max)
+                                              :node directory-node))
+                (treemacs-collapse-extension-node)))
+            (with-selected-window target
+              (cl-labels
+                  ((check (file hunk)
+                     (should (eq (selected-window) target))
+                     (should (eq (current-buffer) (window-buffer target)))
+                     (should (equal diff-review--file-path file))
+                     (should (= (diff-review--hunk-number) hunk))
+                     (with-selected-window tree
+                       (should (equal (treemacs-magit-node-key
+                                       (treemacs-button-get (treemacs-current-button) :node))
+                                      file))))
+                   (click (label)
+                     (let* ((header (diff-review--file-header))
+                            (map (get-text-property (string-search label header)
+                                                    'local-map header))
+                            (keys (vector 'header-line
+                                          `(mouse-1 (,target header-line (0 . 0) 0)))))
+                       (call-interactively (lookup-key map [header-line mouse-1]) nil keys))))
+                (treemacs-magit--review-follow)
+                (check "z.txt" 1)
+                (call-interactively (key-binding (kbd "C-c _ p")))
+                (check "z.txt" 1)
+                (call-interactively (key-binding (kbd "C-c _ n")))
+                (check "z.txt" 2)
+                (call-interactively (key-binding (kbd "C-c _ n")))
+                (check "nested/deep/m.txt" 1)
+                (forward-line 1)
+                (click "[Previous]")
+                (check "z.txt" 2)
+                (click "[Next]")
+                (check "nested/deep/m.txt" 1)
+                (click "[Next]")
+                (check "nested/deep/m.txt" 2)
+                (click "[Next]")
+                (check "a.txt" 1)
+                (click "[Next]")
+                (check "a.txt" 2)
+                (click "[Next]")
+                (check "a.txt" 2)
+                (call-interactively (key-binding (kbd "C-c _ p")))
+                (check "a.txt" 1)
+                (call-interactively (key-binding (kbd "C-c _ p")))
+                (check "nested/deep/m.txt" 2)))))
+      (dolist (buffer (buffer-list))
+        (when (and (not (memq buffer existing-buffers))
+                   (or (string= (buffer-name buffer) treemacs-magit--buffer-name)
+                       (string-prefix-p directory (buffer-local-value 'default-directory buffer))))
+          (kill-buffer buffer)))
+      (delete-directory directory t))))
+
 (ert-deftest treemacs-magit-review-marker-without-tint ()
   (with-temp-buffer
     (insert "first\nsecond\nthird\n")
