@@ -18,6 +18,8 @@
 (require 'seq)
 (require 'subr-x)
 
+(autoload 'treemacs-magit-review-upload-to-pr "treemacs-magit-review-github" nil t)
+
 (defgroup treemacs-magit-review nil
   "Private, branch-local code review comments."
   :group 'tools)
@@ -663,13 +665,14 @@ With prefix NEW, add another comment even if one already occupies this line."
                        ("p" . treemacs-magit--review-list-previous)
                        ("e" . treemacs-magit--review-list-edit)
                        ("d" . treemacs-magit--review-list-delete)
+                       ("u" . treemacs-magit-review-upload-to-pr)
                        ("g" . treemacs-magit--review-refresh-list)))
       (define-key map (kbd (car binding)) (cdr binding))) map))
 
 (define-derived-mode treemacs-magit-review-list-mode special-mode "Review Comments"
   "All review comments for this checkout's current branch.
 RET visits a comment's location or opens the JSON link in the header.
-n/p move, e edits, d deletes, and g reloads the current branch."
+n/p move, e edits, d deletes, u previews upload to a GitHub PR, and g reloads."
   (setq-local revert-buffer-function (lambda (&rest _) (treemacs-magit--review-refresh-list))))
 
 (defun treemacs-magit--review-sort-key (comment)
@@ -705,7 +708,7 @@ n/p move, e edits, d deletes, and g reloads the current branch."
                             'follow-link t
                             'action (lambda (_) (find-file-existing file)))
         (insert "\n")))
-    (insert "\nRET visit | n/p move | e edit | d delete | g reload\n\n")
+    (insert "\nRET visit | n/p move | e edit | d delete | u upload to PR | g reload\n\n")
     (unless comments (insert "No review comments for this branch\n"))
     (dolist (comment comments)
       (let* ((anchor (treemacs-magit--review-anchor-of comment))

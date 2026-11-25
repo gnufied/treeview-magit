@@ -9,6 +9,7 @@ test:
 	  -l treemacs-magit-mode.el \
 	  -l treemacs-magit-mode-test.el \
 	  -l treemacs-magit-review-test.el \
+	  -l treemacs-magit-review-github-test.el \
 	  -f ert-run-tests-batch-and-exit
 
 DIFF_REVIEW_DIR ?= $(HOME)/checkout/diff-review

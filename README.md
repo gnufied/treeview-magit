@@ -154,7 +154,51 @@ to open the file.
 - `n` / `p`: next/previous comment.
 - `e`: edit the comment.
 - `d`: delete it with confirmation.
+- `u`: preview and upload selected comments to a GitHub pull request as a pending review.
 - `g`: reload from disk and discover the checkout's current branch.
+
+#### Uploading comments to a GitHub PR
+
+From the review list, press `u` or run `M-x treemacs-magit-review-upload-to-pr`
+to open a read-only upload preview for a GitHub pull request (defaulting to the
+PR associated with the current branch, or accepting a PR number, URL, or
+`OWNER/REPO#NUMBER`). The preview verifies each comment against the pinned PR
+head commit and diff hunks on the new-file (`RIGHT`) side via `gh`, displays
+the canonical PR URL, state, head OID, and authenticated GitHub account, and
+lets you review and toggle items before uploading:
+
+- `SPC` / `m`: toggle selection on an eligible (or confirmed) comment.
+- `c`: confirm or unconfirm a text-with-context suggested relocation (shown
+  unselected with saved vs. proposed code snippets until confirmed).
+- `n` / `p`: move between preview comments.
+- `g`: rebuild the preview from fresh GitHub and local review data.
+- `R`: reconcile an unresolved upload attempt after an uncertain `POST` outcome
+  (`C-u R` clears manually after you verify on GitHub).
+- `C-c C-c` / `U`: create a single pending review on GitHub (never submits the
+  review automatically; local comments remain intact).
+
+Comments may be skipped or left unselected for clear reasons:
+
+- `resolved`: the local comment status is not `open`.
+- `file-not-in-pr` / `pr-file-limit`: the file is not in the PR's changed files
+  (or the PR exceeded GitHub's 3,000-file listing cap).
+- `deleted-file`: the file is removed in the PR (v1 targets the `RIGHT` side only).
+- `missing-patch` / `truncated-patch`: GitHub omitted or truncated the file's
+  diff patch, or patch line counts disagree with the file entry.
+- `tree-unverified` / `blob-mismatch`: the file blob could not be verified
+  against the pinned PR head commit tree.
+- `outdated` / `ambiguous`: the anchored text is absent from the PR head or
+  matches multiple locations/files.
+- `outside-diff` / `crosses-hunks`: one or more selected lines fall outside the
+  visible PR diff or span multiple hunks.
+- Previously uploaded comments are shown with their GitHub review ID and left
+  deselected by default (with indicators if edited locally or deleted on GitHub).
+- If the authenticated account already has a pending review on the PR, upload is
+  blocked until that pending review is submitted or deleted on GitHub.
+
+Upload receipts, in-flight attempt records, and dedicated upload locks are stored
+separately from review comments under
+`<git-common-dir>/treemacs-magit-review/github/`.
 
 The main package autoloads these commands. To load only the companion:
 

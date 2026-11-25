@@ -25,6 +25,8 @@
 (autoload 'treemacs-magit-review-comment "treemacs-magit-review" nil t)
 (autoload 'treemacs-magit-review-list "treemacs-magit-review" nil t)
 (autoload 'treemacs-magit-review-mode "treemacs-magit-review" nil t)
+(autoload 'treemacs-magit-review-upload-to-pr "treemacs-magit-review-github" nil t)
+(autoload 'treemacs-magit--review-gh-pr-metadata "treemacs-magit-review-github")
 
 (declare-function treemacs-define-doubleclick-action "treemacs-mouse-interface"
                   (state action))
@@ -990,13 +992,7 @@ Signal a user error containing the process output when the command fails."
 
 When PULL-REQUEST is nil, ask gh for the pull request associated with the
 current branch."
-  (json-parse-string
-   (apply #'treemacs-magit--process-string
-          "gh" "pr" "view"
-          (append (and pull-request (list (number-to-string pull-request)))
-                  (list "--json"
-                        "number,baseRefOid,headRefName,headRefOid")))
-   :object-type 'alist))
+  (treemacs-magit--review-gh-pr-metadata pull-request default-directory))
 
 (defun treemacs-magit--pr-already-checked-out-p (metadata)
   "Return non-nil when METADATA describes the current checkout."
